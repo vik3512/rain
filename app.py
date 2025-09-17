@@ -700,7 +700,6 @@ server = app.server
 initial_figure = base_map_figure(center=BASE_CENTER, zoom=BASE_ZOOM, style=DEFAULT_TILE_STYLE)
 
 app.layout = html.Div([
-    # ===== Stores =====
     dcc.Store("lang-store", data="zh"),
     dcc.Store("mode-store", data="explore"),
     dcc.Store("explore-store", data={}),
@@ -712,99 +711,72 @@ app.layout = html.Div([
     dcc.Store(id="user-location-store", data=None),
     dcc.Store(id="status-store", data={"type": None, "data": {}}),
     dcc.Store(id="timestamp-store", data=None),
-    dcc.Store(id="rain-heatmap-store", data=None),
+    dcc.Store(id="rain-heatmap-store", data=None), 
 
-    # ===== Panel =====
     html.Div([
-        # ── 頂部列：控制台標題 + 模式切換 + 語言切換 ──
-        html.Div(className="top-bar", children=[
-            html.H2(id="ttl", children="控制台"),
-            dcc.RadioItems(
-                id="mode",
-                value="explore",
-                className="rad",
-                labelStyle={"display": "inline-block", "marginRight": "10px"},
-                style={"overflowX": "auto"}  # 手機：過長時可水平滑動
-            ),
-            html.Button("🌐", id="btn-lang", className="btn globe"),
-        ]),
-
-        # 語言選單
+        html.H2(id="ttl", children="控制台", style={'marginTop': '8px', 'marginBottom': '16px'}), 
+        
+        html.Button("🌐", id="btn-lang", className="btn globe"),
         html.Div(id="lang-menu", className="menu hide", children=[
             html.Button("中文", id="lang-zh", n_clicks=0),
             html.Button("English", id="lang-en", n_clicks=0),
             html.Button("日本語", id="lang-ja", n_clicks=0),
         ]),
-
-        # ── Explore 模式 ──
+        
+        html.Div(className="row", children=[
+            dcc.RadioItems(id="mode", value="explore", className="rad", 
+                           labelStyle={"display": "inline-block", "marginRight": "15px"})
+        ]),
+        
         html.Div(id="box-explore", children=[
             html.Div(className="input-row", children=[
-                dcc.Input(id="q", className="input"),
-                html.Button(id="btn-search", className="button"),
+                dcc.Input(id="q", className="input"), 
+                html.Button(id="btn-search", className="button"), 
             ]),
             html.Div(className="row gap", children=[
-                html.Button(id="btn-area", className="button link"),
+                html.Button(id="btn-area", className="button link"), 
                 html.Button(id="btn-locate", className="button link"),
             ]),
         ]),
 
-        # ── Route 模式 ──
         html.Div(id="box-route", className="hide", children=[
             html.Div(className="row", children=[
                 html.Span(id="lab-travel", className="lab"),
-                dcc.RadioItems(
-                    id="travel-mode",
-                    value="drive",
-                    className="rad",
-                    labelStyle={"display": "inline-block", "marginRight": "10px"}
-                ),
+                dcc.RadioItems(id="travel-mode", value="drive", className="rad", 
+                               labelStyle={"display": "inline-block", "marginRight": "10px"}),
             ]),
             dcc.Input(id="src", className="input"),
             dcc.Input(id="dst", className="input"),
             html.Div(className="input-row", children=[
-                html.Button(id="btn-plan", className="button", style={"flex": 1}),
-                html.Button("📍", id="btn-locate-src", className="button link btn-locate"),
+                html.Button(id="btn-plan", className="button", style={"flex": 1}), 
+                html.Button("📍", id="btn-locate-src", className="button link btn-locate"), 
             ]),
         ]),
 
-        # 分隔線
         html.Hr(),
-
-        # 底圖切換
         html.Div(className="row", children=[
             html.Span(id="lab-basemap", className="lab"),
-            dcc.RadioItems(
-                id="basemap",
-                value="low",
-                className="rad",
-                labelStyle={"display": "inline-block", "marginRight": "15px"}
-            ),
+            dcc.RadioItems(id="basemap", value="low", className="rad", 
+                           labelStyle={"display": "inline-block", "marginRight": "15px"})
         ]),
-
-        # 狀態/提示
         html.Div(id="addr-line", className="addr"),
         html.Div(id="alert", className="alert yellow hide"),
-        html.Div(id="ts-line", className="ts"),
-    ], className="panel"),
+        html.Div(id="ts-line", className="ts")
+    ], className="panel"), 
 
-    # ===== Map =====
-    html.Div(
-        style={'position': 'fixed', 'top': 0, 'left': 0, 'width': '100%', 'height': '100%', 'zIndex': 0},
-        children=[
-            dcc.Graph(
-                id="map",
-                style={"height": "100%"},
-                config={"scrollZoom": True, "displaylogo": False, "displayModeBar": False},
-                figure=initial_figure
-            ),
-        ]
-    ),
-
-    # ===== Legend =====
+    html.Div(style={'position': 'fixed', 'top': 0, 'left': 0, 'width': '100%', 'height': '100%', 'zIndex': 0}, children=[
+        dcc.Graph(
+            id="map",
+            style={"height":"100%"},
+            config={"scrollZoom": True, "displaylogo": False, "displayModeBar": False},
+            figure=initial_figure
+        ),
+    ]),
+    
     html.Div(className="legend", id="legend-a", children=[
         html.Span(id="legend-title", className="legend-title"),
-        html.Div(className="legend-scale-dynamic", id="legend-scale-container"),
-    ]),
+        html.Div(className="legend-scale-dynamic", id="legend-scale-container")
+    ])
 ])
 
 # ===== Callbacks =====
@@ -1334,5 +1306,4 @@ def draw_map(style, explore, route, view, mode, heatmap_data, lang):
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8050"))
-    # 本地測試使用 127.0.0.1；Render 部署用 0.0.0.0
-    app.run(host=os.getenv("HOST", "0.0.0.0"), port=port, debug=False)
+    app.run(host="0.0.0.0", port=port, debug=False)
