@@ -1,0 +1,387 @@
+/* ============ Apple-lite Design Tokens ============ */
+:root {
+  /* 字體 */
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+               Roboto, "Noto Sans", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+
+  /* 排版比例 */
+  --fs-12: clamp(12px, 0.75vw, 12px);
+  --fs-14: clamp(14px, 0.85vw, 14px);
+  --fs-16: clamp(16px, 1.0vw, 16px);
+  --fs-18: clamp(18px, 1.2vw, 18px);
+  --fs-20: clamp(20px, 1.4vw, 20px);
+  --fs-24: clamp(24px, 1.8vw, 24px);
+  --fs-32: clamp(28px, 3.0vw, 32px);
+  --lh: 1.6;
+
+  /* 色彩 (淺色) */
+  --bg: #ffffff;
+  --fg: #1d1d1f;
+  --muted: #6e6e73;
+  --border: #e5e5ea;
+  --card: #fafafa;
+  --glass: rgba(255,255,255,.7);
+  --shadow: 0 2px 12px rgba(0,0,0,.06);
+  --accent: #0071e3;
+  --accent-press: #0062c7;
+
+  /* 空間尺度 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --radius-1: 8px;
+  --radius-2: 12px;
+  --radius-round: 999px;
+
+  /* 動效 */
+  --fast: 140ms;
+  --ease: cubic-bezier(.2,.8,.2,1);
+}
+
+/* 暗色模式 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0b0c;
+    --fg: #f5f5f7;
+    --muted: #9f9fa6;
+    --border: #2c2c2e;
+    --card: #111113;
+    --glass: rgba(20,20,22,.55);
+    --shadow: 0 8px 24px rgba(0,0,0,.4);
+    --accent: #0a84ff;
+    --accent-press: #0066cc;
+  }
+}
+
+/* ============ 全域基礎樣式 ============ */
+html, body {
+  font-family: var(--font-sans);
+  color: var(--fg);
+  background: var(--bg);
+  line-height: var(--lh);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  height: 100%; 
+  margin: 0;   
+  overflow: hidden; 
+}
+
+#map {
+  height: 100vh;
+}
+
+/* 標題層級 */
+h1 { font-size: var(--fs-32); letter-spacing: -0.02em; margin: var(--space-7) 0 var(--space-5); }
+h2 { font-size: var(--fs-24); letter-spacing: -0.01em; margin: var(--space-6) 0 var(--space-4); }
+h3 { font-size: var(--fs-20); margin: var(--space-5) 0 var(--space-3); }
+p  { font-size: var(--fs-16); color: var(--fg); margin: var(--space-3) 0; }
+.small { font-size: var(--fs-14); color: var(--muted); }
+
+/* ============ 元件：按鈕、連結、表單 ============ */
+a {
+  color: var(--accent);
+  text-underline-offset: 2px;
+  transition: color var(--fast) var(--ease);
+}
+a:hover { color: var(--accent-press); }
+
+.button {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 10px; height: 44px; padding: 0 18px;
+  border-radius: var(--radius-round);
+  background: var(--accent); color: white; border: 0;
+  font-size: var(--fs-16); font-weight: 600;
+  box-shadow: none;
+  cursor: pointer; 
+  transition: transform var(--fast) var(--ease), background var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+}
+.button:hover { background: var(--accent-press); }
+.button:active { transform: translateY(1px); }
+
+.button.link {
+  background: transparent; color: var(--accent); padding: 0; height: auto;
+  font-weight: 500; 
+}
+.button.link:hover { color: var(--accent-press); text-decoration: underline; background: transparent; }
+
+/* 表單輸入 */
+.input, input[type="text"], input[type="search"], input[type="email"], input[type="number"], textarea, select {
+  width: 100%; height: 44px;
+  padding: 0 14px;
+  border-radius: var(--radius-1);
+  border: 1px solid var(--border);
+  background: var(--bg); color: var(--fg);
+  font-size: var(--fs-16);
+  transition: box-shadow var(--fast) var(--ease), border-color var(--fast) var(--ease);
+  outline: none;
+  box-sizing: border-box;
+}
+textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical; }
+.input:focus, input:focus, textarea:focus, select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 25%, transparent);
+}
+
+/* 卡片 */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  box-shadow: var(--shadow);
+  padding: var(--space-5);
+}
+
+/* 可達性：聚焦可見 */
+:focus-visible { outline: 3px solid color-mix(in oklab, var(--accent) 60%, transparent); outline-offset: 3px; border-radius: 6px; }
+
+
+/* ============ App Specific Layout (Merged) ============ */
+
+.panel {
+  position: fixed;
+  left: 16px;
+  top: 16px;
+  z-index: 10;
+  width: 440px;
+  max-width: calc(100vw - 32px);
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  border-radius: var(--radius-2);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  padding: var(--space-4) var(--space-5);
+  box-sizing: border-box;
+}
+
+.panel h2 {
+  margin-top: 8px;
+  margin-bottom: 16px;
+}
+
+.globe {
+  position: absolute;
+  top: 22px; 
+  right: 24px;
+  border-radius: var(--radius-1);
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.menu {
+  position: absolute;
+  top: 70px;
+  right: 16px;
+  width: 160px;
+  background: var(--card);
+  border-radius: var(--radius-2);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 20;
+  border: 1px solid var(--border);
+}
+.menu.hide {
+  display: none;
+}
+.menu button {
+  width: 100%;
+  padding: 8px;
+  border: none;
+  background: var(--border);
+  color: var(--fg);
+  border-radius: var(--radius-1);
+  cursor: pointer;
+}
+.menu button:hover {
+  background: color-mix(in oklab, var(--border) 80%, var(--fg));
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+.row.gap {
+  gap: 12px;
+}
+
+.rad label {
+  margin-right: 15px;
+  display: inline-block;
+  font-size: var(--fs-16);
+  color: var(--fg);
+}
+
+.rad input[type="radio"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border);
+    border-radius: 50%;
+    vertical-align: middle;
+    margin-right: 6px;
+    position: relative;
+    top: -2px;
+    transition: all 100ms var(--ease);
+}
+.rad input[type="radio"]:checked {
+    border: 6px solid var(--accent);
+}
+.rad input[type="radio"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+
+.input-row {
+  display: flex;
+  gap: var(--space-2);
+}
+.input-row .input {
+  flex: 1;
+  margin-bottom: 0; 
+}
+.input-row .button {
+  flex-shrink: 0;
+}
+
+
+#box-explore .row.gap {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+#box-explore .row.gap .button {
+  width: 100%;
+  height: 40px; 
+}
+
+.btn-locate {
+  flex: 0 0 auto;
+}
+
+.lab {
+  color: var(--muted);
+  font-weight: 600;
+  margin-right: 8px;
+  font-size: var(--fs-16);
+}
+
+.addr {
+  margin-top: 12px;
+  font-weight: 600;
+  font-size: var(--fs-14);
+  color: var(--fg);
+}
+
+.alert {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-1);
+  font-weight: 600;
+  font-size: 14px;
+}
+.alert.hide {
+  display: none;
+}
+.alert.yellow {
+  background: #fffbeb;
+  color: #7A4F01;
+  border: 1px solid #FFD666;
+}
+@media (prefers-color-scheme: dark) {
+  .alert.yellow {
+    background: #332A0E;
+    color: #FFD666;
+    border-color: #7A4F01;
+  }
+}
+.alert.blue {
+  background: #e7f0ff;
+  color: #0042AB;
+  border: 1px solid #97bbff;
+}
+@media (prefers-color-scheme: dark) {
+  .alert.blue {
+    background: #0E1F33;
+    color: #97bbff;
+    border-color: #0042AB;
+  }
+}
+
+
+.ts {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: var(--fs-14);
+}
+
+.hide {
+  display: none;
+}
+
+.legend {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  background: var(--glass);
+  backdrop-filter: blur(4px);
+  border-radius: var(--radius-2);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.legend-title {
+  font-weight: 600;
+  font-size: var(--fs-14);
+  color: var(--fg);
+}
+
+/* 熱力圖模式圖例 */
+.legend-scale {
+  display: flex;
+  justify-content: space-between;
+  width: 120px;
+  margin-bottom: 4px;
+}
+.legend-scale span {
+  font-size: var(--fs-12);
+  color: var(--muted);
+  font-weight: 500;
+}
+.legend-bar {
+  width: 120px;
+  height: 10px;
+  border-radius: 5px;
+}
+
+/* 路線模式圖例 */
+.legend-scale-route {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.legend-scale-route .swatch {
+    width: 24px;
+    height: 8px;
+    border-radius: var(--radius-round);
+}
+.legend-scale-route span {
+  font-size: var(--fs-14);
+  font-weight: 600;
+  color: var(--fg);
+}
