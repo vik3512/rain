@@ -388,7 +388,7 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
 /* === Mobile compact (≤480px) === */
 @media (max-width: 480px) {
 
-  /* === 基礎設定（第一段保留） === */
+  /* === 基礎設定 === */
   .panel {
     width: calc(100% - 24px);
     margin: 0 auto;
@@ -411,11 +411,11 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   .row.gap { gap: 8px; }
   .button.link { height: 38px; padding: 0 10px; font-size: 14px; }
 
-  /* 模式 / 底圖單選更緊湊 */
+  /* 單選更緊湊 */
   .rad label { margin-right: 10px !important; font-size: 14px; }
   .lab { font-size: 14px; }
 
-  /* 語言球、定位小鈕縮小 */
+  /* 語言球、定位小鈕縮小（一般按鈕） */
   .btn.globe, .btn.btn-locate { width: 38px; height: 38px; font-size: 16px; }
 
   /* 地址列與提示框縮小 */
@@ -423,8 +423,7 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   .alert { font-size: 14px; padding: 10px 12px; border-radius: 10px; }
   .ts { font-size: 12px; margin-top: 6px; opacity: .7; }
 
-  /* === 新增 top-bar 與 2×2 交通方式（第二段新增） === */
-  /* 頂部一行：左標題、右模式切換 */
+  /* === 頂部一行：左標題＋右模式切換 === */
   .panel .top-bar {
     display: flex;
     align-items: center;
@@ -434,7 +433,7 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   }
   .panel .top-bar #ttl {
     flex: 1 1 auto;
-    min-width: 0; /* 防止標題被擠爆 */
+    min-width: 0;
     font-size: 18px;
     margin: 4px 0;
     line-height: 1.2;
@@ -444,8 +443,8 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
     min-width: 0;
     display: flex !important;
     gap: 10px;
-    white-space: nowrap; /* 不換行 */
-    overflow-x: auto;    /* 超過寬度可滑動 */
+    white-space: nowrap;       /* 不換行 */
+    overflow-x: auto;          /* 超出可滑動 */
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
   }
@@ -479,4 +478,46 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   /* 縮小整體間距 */
   .row { margin-bottom: 6px; }
   hr { margin: 8px 0; opacity: .4; }
+
+  /* === 左下角浮動語言按鈕 === */
+  .floating-lang-btn {
+    position: fixed;
+    left: 12px;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px)); /* 避開圖例/底部手勢區 */
+    z-index: 10000;
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* 手機版隱藏 top-bar 內的舊語言按鈕（若仍存在） */
+  .panel .top-bar .btn.globe { display: none !important; }
+
+  /* 浮動語言選單跟著按鈕上方展開 */
+  #lang-menu.menu {
+    position: fixed;
+    left: 12px;
+    bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+    z-index: 10001;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    padding: 6px;
+  }
+  #lang-menu.menu.hide { display: none; }
+  #lang-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    font-size: 14px;
+    border-radius: 8px;
+  }
+  #lang-menu button + button { margin-top: 4px; }
 }
