@@ -421,3 +421,48 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   .alert { font-size: 14px; padding: 10px 12px; border-radius: 10px; }
   .ts { font-size: 12px; margin-top: 6px; opacity: .7; }
 }
+@media (max-width: 480px) {
+  .panel .top-bar{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:6px;
+  }
+  /* 標題可縮、不可被擠爆 */
+  .panel .top-bar #ttl{
+    flex:1 1 auto;
+    min-width:0;              /* 讓 flex 子元素真的能縮 */
+    font-size:18px;
+    margin:4px 0;
+    line-height:1.2;
+  }
+  /* 模式切換：單行 + 可橫向滑動 */
+  .panel .top-bar #mode{
+    flex:0 1 58%;             /* 右側占比，可自行調 50–65% */
+    min-width:0;
+    display:flex !important;
+    gap:10px;
+    white-space:nowrap;       /* 不換行 */
+    overflow-x:auto;          /* 過長時橫向滑動 */
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;     /* FF 隱藏捲軸 */
+  }
+  .panel .top-bar #mode::-webkit-scrollbar{ display:none; } /* WebKit 隱藏捲軸 */
+
+  /* 模式按鈕更緊湊 */
+  .panel .top-bar #mode label{
+    margin-right:0 !important;
+    font-size:14px;
+    padding:4px 8px;
+    line-height:1.2;
+    display:inline-flex;
+    align-items:center;
+  }
+
+  /* 其它區塊也一併瘦身（跟你前面要求一致） */
+  .panel{ padding:10px 12px; border-radius:14px; }
+  .row{ margin-bottom:6px; }
+  .input{ height:40px; font-size:15px; padding:0 10px; }
+  .button{ height:40px; font-size:15px; padding:0 14px; border-radius:10px; }
+  hr{ margin:8px 0; opacity:.4; }
+}
