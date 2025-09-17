@@ -726,7 +726,7 @@ app.layout = html.Div([
                 labelStyle={"display": "inline-block", "marginRight": "10px"},
                 style={"overflowX": "auto"}  # 手機：過長時可水平滑動
             ),
-            html.Button("🌐", id="btn-lang", className="btn globe"),
+            
         ]),
 
         # 語言選單
@@ -805,6 +805,7 @@ app.layout = html.Div([
         html.Span(id="legend-title", className="legend-title"),
         html.Div(className="legend-scale-dynamic", id="legend-scale-container"),
     ]),
+    html.Button("🌐", id="btn-lang", className="btn globe floating-lang-btn"),
 ])
 
 # ===== Callbacks =====
