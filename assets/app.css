@@ -168,9 +168,12 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   right: 24px;
   border-radius: var(--radius-1);
   padding: 6px 10px;
-  border: 1px solid var(--border);
-  background: var(--bg);
   cursor: pointer;
+  /* 移除背景 */
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
 }
 
 .menu {
@@ -238,7 +241,7 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
     position: relative;
     top: -2px;
     transition: all 100ms var(--ease);
-    background: var(--bg); /* 新增：確保深色模式邊界清楚 */
+    background: var(--bg);
 }
 .rad input[type="radio"]:checked {
     border: 6px solid var(--accent);
@@ -340,7 +343,7 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 8; /* Lowered from 10 to 8 */
+  z-index: 8;
   background: var(--glass);
   backdrop-filter: blur(4px);
   border-radius: var(--radius-2);
@@ -392,103 +395,84 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   color: var(--fg);
 }
 
-/* ========== 手機版：控制台抽屜開關 ==========
-   只影響手機（<=768px）；桌機完全不變
-*/
+/* ========================================================== */
+/* ========== 正確的手機版與桌機版樣式切換邏輯 ========== */
+/* ========================================================== */
+
+/* 1. 先定義預設/桌機版樣式：預設隱藏手機按鈕 */
+.panel-toggle-mobile {
+  display: none;
+}
+
+/* 2. 再定義手機版樣式：當螢幕寬度小於等於 768px 時，覆蓋預設樣式 */
 @media (max-width: 768px) {
-  /* 面板開啟/關閉一致動畫 */
+
+  /* 讓面板有滑入滑出的動畫效果 */
   .panel {
     transition: opacity 160ms var(--ease), transform 160ms var(--ease);
   }
 
-  /* 左上角「三」按鈕：永遠可見、位階最高 */
-  .panel-toggle-mobile{
+  /* 顯示「三」按鈕，並設定其樣式與位置 */
+  .panel-toggle-mobile {
+    display: inline-flex; /* 覆蓋 display: none，讓按鈕顯示出來 */
     position: fixed;
     top: max(12px, env(safe-area-inset-top));
     left: max(12px, env(safe-area-inset-left));
-    width: 44px; height: 44px; border-radius: 10px;
-    display: inline-flex; align-items: center; justify-content: center;
-    font-size: 22px; line-height: 1;
-    border: 1px solid var(--border);
-    background: var(--glass);
-    backdrop-filter: blur(12px);
-    box-shadow: var(--shadow);
-    z-index: 2000; /* 高於 .panel(10) 與 scrim(9) */
+    width: 44px;
+    height: 44px;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    line-height: 1;
+    z-index: 2000; /* 確保在最上層 */
     cursor: pointer;
+    /* 以下為移除背景的樣式 */
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
   }
 
-  /* 面板隱藏：只改可見性，不影響內部輸入值 */
-  #panel.panel-hide{
+  /* 面板隱藏時的樣式 */
+  #panel.panel-hide {
     opacity: 0;
     pointer-events: none;
     transform: translateY(-6px);
-    transition: opacity 160ms var(--ease), transform 160ms var(--ease);
   }
 
-  /* 遮罩：面板開啟時才接管點擊 */
-  .panel-scrim{
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0);
+  /* 遮罩的基礎樣式 */
+  .panel-scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0);
     pointer-events: none;
     transition: background 160ms var(--ease, ease);
-    z-index: 9; /* 介於地圖與面板之間，不擋左上按鈕 */
+    z-index: 9; /* 層級低於按鈕，高於地圖 */
   }
-  .panel-scrim.show{
-    background: rgba(0,0,0,0.18);
-    pointer-events: auto;
+  
+  /* 遮罩顯示時的樣式 */
+  .panel-scrim.show {
+    background: rgba(0, 0, 0, 0.18);
+    pointer-events: auto; /* 允許點擊 */
   }
-}
 
-/* 可選：開啟面板時鎖背景捲動（由 callback 控制 body.lock-scroll） */
-html.lock-scroll, body.lock-scroll{ overflow: hidden; overscroll-behavior: none; }
-
-
-/* ===== NEW STYLE (for title alignment) ===== */
-@media (max-width: 768px) {
-  /* 讓標題避開左上的 ≡ 按鈕：不改寬幅，只內縮標題 */
-  #panel h2#ttl { 
-    padding-left: 56px; /* 44 按鈕 + 12 間距 */
-  }
-}
-/* ========== 移除右上角「地球」的白底 ========== */
-.globe {
-  background: transparent !important;   /* 背景透明 */
-  border: none !important;             /* 移除邊框 */
-  box-shadow: none !important;         /* 移除陰影 */
-  backdrop-filter: none !important;    /* 移除模糊玻璃效果 */
-  padding: 6px 10px;                   /* 保留點擊範圍 */
-}
-
-.globe:hover,
-.globe:active {
-  background: transparent !important;  /* 滑鼠移上或點擊時保持透明 */
-}
-
-
-/* ========== 移除左上角「三」菜單按鈕白底（手機版） ========== */
-@media (max-width: 768px) {
-  .panel-toggle-mobile {
-    background: transparent !important; /* 背景透明 */
-    border: none !important;            /* 移除邊框 */
-    box-shadow: none !important;        /* 移除陰影 */
-    backdrop-filter: none !important;   /* 移除模糊玻璃效果 */
+  /* 讓標題文字避開左上角的按鈕 */
+  #panel h2#ttl {
+    padding-left: 56px;
   }
 }
 
-/* ========== 可達性：保留鍵盤聚焦框（不會變白底） ========== */
+/* 鍵盤使用者的高亮外框（可達性） */
 .globe:focus-visible,
 .panel-toggle-mobile:focus-visible {
   outline: 3px solid color-mix(in oklab, var(--accent) 60%, transparent);
   outline-offset: 2px;
-}
-/* --- Desktop defaults (hide the mobile toggle; keep scrim inert) --- */
-.panel-toggle-mobile { display: none; }
-.panel-scrim {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0);
-  pointer-events: none;
-  z-index: 9;
+  border-radius: 6px;
 }
 
-/* --- Mobile overrides (already present; keep as-is) --- */
-/* 這區保留你原本的 @media (max-width: 768px) 設定 */
+/* 開啟面板時鎖定背景滾動（由 callback 控制） */
+html.lock-scroll,
+body.lock-scroll {
+  overflow: hidden;
+  overscroll-behavior: none;
+}

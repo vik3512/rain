@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# App Version: 7.6-final (修復熱力圖與提示條邏輯不一致)
+# App Version: 7.7-final (穩定熱力圖掃描與視覺強化)
 
 import os, json, time, threading, math, logging, re
 from datetime import datetime, timezone, timedelta
@@ -63,7 +63,7 @@ GOOGLE_MAPS_API_KEY = GOOGLE_KEY
 OWM_KEY    = os.getenv("OPENWEATHER_API_KEY", "").strip()
 HAS_GMAP = bool(GOOGLE_KEY)
 HAS_OWM  = bool(OWM_KEY)
-UA = {"User-Agent": "rain-route-assistant/7.6-final"}
+UA = {"User-Agent": "rain-route-assistant/7.7-final"}
 TW_BBOX = (118.2, 20.5, 123.5, 26.5)
 INTERNATIONAL_KEYWORDS = ["澳洲","美國","日本","英國","法國","德國","中國","香港","澳門","韓國","加拿大","紐西蘭","泰國"]
 LANG_MAP = {"zh":"zh-TW","en":"en","ja":"ja"}
@@ -176,6 +176,9 @@ DECISION_MM_MIN = 0.8
 RAIN_CODES = set(range(50,70)) | set(range(80,100))
 THUNDER_MIN, THUNDER_MAX = 95, 99
 
+def is_rain_now(mm: float, code: int) -> bool:
+    return mm >= DECISION_MM_MIN or code in RAIN_CODES or (THUNDER_MIN <= code <= THUNDER_MAX)
+
 def _quantize(v, q=0.05): return round(round(float(v)/q)*q, 5)
 def _quantize_pair(lat, lon, q=0.05): return (_quantize(lat, q), _quantize(lon, q))
 
@@ -215,11 +218,6 @@ def _om_hourly_forecast_data_cached_api(qlat: float, qlon: float, hour_key_utc: 
         logging.error(f"OM Forecast fetch error: {e}")
         return ([], [0.0], [0], 0, 0)
 
-# ===============================================================================
-# ===== BEGIN: UPDATED/NEW WEATHER SCANNING FUNCTIONS ===========================
-# ===============================================================================
-
-# 新增 hour_key_override：讓同一小時內也能繞過 HOURLY_CACHE
 def _om_hourly_forecast_data(lat: float, lon: float, hour_key_override: str | None = None):
     qlat, qlon = _quantize_pair(lat, lon, q=0.05)
     hour_key = hour_key_override or _current_hour_key_utc()
@@ -241,18 +239,15 @@ def get_weather_at_for_scan(lat, lon, hour_key_override: str | None = None):
     except Exception:
         return 0.0, 0, False
 
-# ---- 9 點錨點：中心 + 四角 + 四邊中點 ----
 def _anchor_points(bounds):
     (south, west), (north, east) = bounds
     c_lat = (south + north) / 2.0
     c_lon = (west + east) / 2.0
     return [
-        (c_lat, c_lon),                                # center
-        (south, west), (south, east), (north, west), (north, east),  # corners
-        (south, c_lon), (north, c_lon), (c_lat, west), (c_lat, east) # edge midpoints
+        (c_lat, c_lon), (south, west), (south, east), (north, west), (north, east),
+        (south, c_lon), (north, c_lon), (c_lat, west), (c_lat, east)
     ]
 
-# （保留同名，預設 n=3 不變；下面會在呼叫處用 n=4）
 def _coarse_centers(bounds, n=3):
     (south, west), (north, east) = bounds
     lat_step = (north - south) / n
@@ -267,7 +262,6 @@ def _coarse_centers(bounds, n=3):
                           (south + (i+1)*lat_step, west + (j+1)*lon_step)))
     return centers, cells
 
-# force=True：繞過快取 + 放寬一次錨點早退；錨點=9，粗掃=4x4=16
 def get_weather_data_for_bounds(bounds: Tuple[Tuple[float, float], Tuple[float, float]], zoom: float, *, force: bool = False) -> List[Tuple[float, float, float]]:
     try:
         (south_lat, west_lon), (north_lat, east_lon) = bounds
@@ -276,51 +270,42 @@ def get_weather_data_for_bounds(bounds: Tuple[Tuple[float, float], Tuple[float, 
 
     fine_step = _cap_step_for_points(south_lat, north_lat, west_lon, east_lon, _get_step_for_zoom(zoom), max_points=400)
 
-    # ★ 快取繞過 key（force 時才帶秒級種子）
     hour_key_override = None
     if force:
         hour_key_override = f"{_current_hour_key_utc()}#{int(time.time())}"
 
-    # ---- 改：9 錨點 ----
     anchor_points = _anchor_points(((south_lat, west_lon), (north_lat, east_lon)))
     try:
-        is_any_anchor_wet = False
-        for lat, lon in anchor_points:
-            _, _, is_visual_rain = get_weather_at_for_scan(lat, lon, hour_key_override)
-            if is_visual_rain:
-                is_any_anchor_wet = True
-                break
-        if not is_any_anchor_wet:
-            # 強制模式：即使錨點沒雨，也放寬一次，避免過度保守誤空回
-            if not force:
-                return []
+        is_any_anchor_wet = any(get_weather_at_for_scan(lat, lon, hour_key_override)[2] for lat, lon in anchor_points)
+        if not is_any_anchor_wet and not force:
+            return []
     except Exception as e:
         logging.warning(f"Heatmap anchor scan failed: {e}")
 
-    # ---- 改：粗掃 4×4 = 16 ----
     coarse_centers, coarse_cells = _coarse_centers(((south_lat, west_lon), (north_lat, east_lon)), n=4)
     suspected_cell_indices = []
     try:
         for idx, (center_lat, center_lon) in enumerate(coarse_centers):
-            _, _, is_visual_rain = get_weather_at_for_scan(center_lat, center_lon, hour_key_override)
-            if is_visual_rain:
+            if get_weather_at_for_scan(center_lat, center_lon, hour_key_override)[2]:
                 suspected_cell_indices.append(idx)
     except Exception as e:
         logging.warning(f"Heatmap coarse scan failed: {e}")
 
-    # 強制模式：若無可疑格，至少掃中心格一次
+    # ===== MODIFICATION: Scan middle 4 cells on force mode =====
     if force and not suspected_cell_indices:
-        suspected_cell_indices = [ (len(coarse_cells)//2) ]  # 4x4 的中間偏近格
+        suspected_cell_indices = [5, 6, 9, 10]
 
     unique_points = set()
     for idx in suspected_cell_indices:
         cell_bounds = coarse_cells[idx]
         for (p_lat, p_lon) in _gen_fine_points_for_cell(cell_bounds, fine_step):
             unique_points.add(_quantize_pair(p_lat, p_lon, q=0.05))
+            
     if not unique_points and suspected_cell_indices:
         for idx in suspected_cell_indices:
             center_lat, center_lon = coarse_centers[idx]
             unique_points.add(_quantize_pair(center_lat, center_lon, q=0.05))
+
     if not unique_points:
         return []
 
@@ -342,10 +327,6 @@ def get_weather_data_for_bounds(bounds: Tuple[Tuple[float, float], Tuple[float, 
             points_with_rain.append(result)
     return points_with_rain
 
-# ===============================================================================
-# ===== END: UPDATED/NEW WEATHER SCANNING FUNCTIONS =============================
-# ===============================================================================
-
 def _get_step_for_zoom(zoom: int | float) -> float:
     z = float(zoom or 0)
     if z >= 12: return 0.03
@@ -355,7 +336,6 @@ def _get_step_for_zoom(zoom: int | float) -> float:
     if z >= 8:  return 0.15
     return 0.20
 
-# 讓熱力半徑隨 zoom 放大而變大（支援小數 zoom，做線性內插）
 _RADIUS_ANCHORS = [
     (4.0, 25), (5.0, 30), (6.0, 35), (7.0, 40),
     (8.0, 50), (9.0, 65), (10.0, 80), (11.0, 95),
@@ -446,22 +426,70 @@ def get_point_forecast(lat: float, lon: float, lang: str) -> dict:
         logging.error(f"Get forecast error: {e}")
         return {"key": "cloudy", "temp": None, "forecast": "", "offset_sec": 0}
 
+# ===== MODIFICATION: Enhanced temperature fetching with multiple fallbacks =====
 temp_cache = CacheToolsTTLCache(maxsize=2048, ttl=300)
 @cached(temp_cache)
 def _get_temp_from_owm_or_om(lat, lon):
+    # 1) 先試 OWM
     if HAS_OWM:
         try:
-            r = requests.get("https://api.openweathermap.org/data/2.5/weather",
-                             params={"lat":lat,"lon":lon,"appid":OWM_KEY,"units":"metric"}, timeout=8)
+            r = requests.get(
+                "https://api.openweathermap.org/data/2.5/weather",
+                params={"lat": lat, "lon": lon, "appid": OWM_KEY, "units": "metric"},
+                timeout=8
+            )
             r.raise_for_status()
-            if (temp := r.json().get("main",{}).get("temp")) is not None: return temp, "owm", None
-        except Exception: pass
+            temp = r.json().get("main", {}).get("temp")
+            if temp is not None:
+                return temp, "owm", None
+        except Exception:
+            pass
+
+    # 2) 再試 Open-Meteo current_weather（加 timezone=auto）
     try:
-        r = requests.get("https://api.open-meteo.com/v1/forecast",
-                         params={"latitude":lat,"longitude":lon,"current_weather":True}, timeout=8)
+        r = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={"latitude": lat, "longitude": lon, "current_weather": True, "timezone": "auto"},
+            timeout=8
+        )
         r.raise_for_status()
-        if (temp := r.json().get("current_weather",{}).get("temperature")) is not None: return temp, "om", None
-    except Exception: pass
+        js = r.json()
+        cw = js.get("current_weather") or {}
+        if (temp := cw.get("temperature_2m")) is not None: # Note: field can be temperature or temperature_2m
+             return temp, "om_current", None
+        if (temp := cw.get("temperature")) is not None:
+            return temp, "om_current", None
+
+        # 3) Fallback：改抓 hourly 溫度的當小時值
+        r2 = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={"latitude": lat, "longitude": lon, "hourly": "temperature_2m", "forecast_days": 1, "timezone": "auto"},
+            timeout=8
+        )
+        r2.raise_for_status()
+        js2 = r2.json()
+        utc_offset_sec = js2.get("utc_offset_seconds", 0)
+        h = js2.get("hourly", {})
+        times = h.get("time") or []
+        temps = h.get("temperature_2m") or []
+        if times and temps:
+            now_with_tz = datetime.now(timezone(timedelta(seconds=utc_offset_sec)))
+            now_key = now_with_tz.strftime("%Y-%m-%dT%H:00")
+            idx = -1
+            if now_key in times:
+                idx = times.index(now_key)
+            else:
+                try:
+                    parsed = [datetime.fromisoformat(t.replace("Z","")) for t in times]
+                    now_hourly = now_with_tz.replace(minute=0, second=0, microsecond=0)
+                    idx = min(range(len(parsed)), key=lambda i: abs(parsed[i] - now_hourly))
+                except Exception:
+                    pass
+            if 0 <= idx < len(temps):
+                return float(temps[idx]), "om_hourly", None
+    except Exception:
+        pass
+
     return None, None, "all failed"
 
 # ===== 地理編碼 & 路線 (v3) =====
@@ -484,7 +512,6 @@ def _google_geocode_once(q: str, lang: str, *, region=None, components=None):
     r.raise_for_status()
     return r.json()
 
-# ===== Geocoding 強化：候選擴張 + Google Places 備援 =====
 def _expand_candidates(q: str) -> List[str]:
     q = (q or "").strip()
     if not q: return []
@@ -692,7 +719,6 @@ def bbox_center(lats: List[float], lons: List[float]) -> Tuple[float,float,float
     zoom = max(3, min(14, zoom))
     return c_lat, c_lon, zoom
 
-# ==== 距離→zoom 工具（只用自動演算法，無固定值） ====
 def _haversine_km(lat1, lon1, lat2, lon2):
     from math import radians, sin, cos, asin, sqrt
     R = 6371.0
@@ -703,7 +729,6 @@ def _haversine_km(lat1, lon1, lat2, lon2):
     return R*c
 
 def _route_length_km(lats, lons, sample=50):
-    """對路徑抽樣估算總長，避免對極長 polyline 全量相加造成延遲。"""
     if not lats or len(lats) != len(lons): return 0.0
     n = len(lats)
     if n <= sample: idxs = range(n)
@@ -718,7 +743,6 @@ def _route_length_km(lats, lons, sample=50):
     return dist
 
 def _route_zoom_from_km(dist_km: float) -> float:
-    """距離→zoom 對應表（可依體感微調）：超短程看更近；中長程逐步拉遠。"""
     if dist_km <= 3: return 13.5
     if dist_km <= 8: return 12.5
     if dist_km <= 20: return 11.5
@@ -726,8 +750,8 @@ def _route_zoom_from_km(dist_km: float) -> float:
     if dist_km <= 150: return 9.5
     return 8.5
 
+# ===== NEW: Helper for Contour Plot =====
 def _prepare_contour_data(points_with_rain: List[Tuple[float, float, float]]) -> Optional[Tuple[List, List, List]]:
-    """Converts sparse point data [(lat, lon, z), ...] to a dense grid (lats, lons, Z_grid) for contours."""
     if not points_with_rain or len(points_with_rain) < 3:
         return None
     try:
@@ -894,19 +918,30 @@ def update_status_text(status, lang):
     status = status or {"type": None}
     stype, data = status.get("type"), status.get("data", {})
     if stype == "explore":
-        temp_str = f"｜{round(data['temp'])}°C" if data.get("temp") is not None else ""
-        parts = [p for p in [t(lang, data.get("weather_key", "cloudy")), temp_str, data.get("forecast", "")] if p]
+        # 【修正】移除此處手動添加的 "｜" 符號
+        temp_str = f"{round(data['temp'])}°C" if data.get("temp") is not None else ""
+        parts = [p for p in [t(lang, data.get("key", "cloudy")), temp_str, data.get("forecast", "")] if p]
+        
+        # 現在 .join 會正確地產生 "多雲 | 29°C"
         return f"📍 {data.get('addr', '')}", " | ".join(parts), "alert yellow"
+        
     if stype == "route":
-        d_temp_str = f"｜{round(data['d_temp'])}°C" if data.get("d_temp") is not None else ""
-        dest_str = f" // {t(lang, 'dest_now')}：{t(lang, data.get('d_lvl_key', 'cloudy'))}{d_temp_str}"
+        # 【修正】同樣移除目的地溫度前的 "｜" 符號
+        d_temp_str = f"{round(data['d_temp'])}°C" if data.get("d_temp") is not None else ""
+        dest_now_parts = [t(lang, data.get('d_lvl_key', 'cloudy')), d_temp_str]
+        dest_str = f" // {t(lang, 'dest_now')}：{' '.join(p for p in dest_now_parts if p)}"
         return f"📍 {t(lang,'addr_fixed')}：{data['o_addr']} → {data['d_addr']}", f"{data.get('prefix','')}{t(lang,'best')} {data['risk']}%{dest_str}", "alert blue"
+        
     if stype == "error":
         alert_txt = t(lang, data.get("key", "toast_err"))
         if data.get("key") == "no_route":
-            d_temp_str = f"｜{round(data['d_temp'])}°C" if data.get("d_temp") is not None else ""
-            alert_txt += f" // {t(lang, 'dest_now')}：{t(lang, data.get('d_lvl_key', 'cloudy'))}{d_temp_str}"
+            # 【修正】同樣移除目的地溫度前的 "｜" 符號
+            d_temp_str = f"{round(data['d_temp'])}°C" if data.get("d_temp") is not None else ""
+            dest_now_parts = [t(lang, data.get('d_lvl_key', 'cloudy')), d_temp_str]
+            dest_str = f" // {t(lang, 'dest_now')}：{' '.join(p for p in dest_now_parts if p)}"
+            alert_txt += dest_str
         return "" if data.get("mode") == "explore" else no_update, alert_txt, "alert blue" if data.get("mode") == "route" else "alert yellow"
+        
     return "", "", "alert yellow hide"
 
 @app.callback(Output("ts-line", "children"), Input("timestamp-store", "data"), Input("i18n-ts-prefix", "data"))
@@ -917,9 +952,8 @@ def update_timestamp_text(ts, prefix):
     Output("explore-store", "data", allow_duplicate=True), Output("route-store", "data", allow_duplicate=True),
     Output("status-store", "data", allow_duplicate=True), Output("timestamp-store", "data", allow_duplicate=True),
     Output("view-store", "data"), Output("ui-store", "data", allow_duplicate=True),
-    Output("user-location-store", "data"), Output("rain-heatmap-store", "data", allow_duplicate=True),
-    Output("q", "value", allow_duplicate=True), Output("src", "value", allow_duplicate=True),
-    Output("dst", "value", allow_duplicate=True),
+    Output("rain-heatmap-store", "data", allow_duplicate=True),
+    Output("q", "value", allow_duplicate=True), Output("src", "value", allow_duplicate=True), Output("dst", "value", allow_duplicate=True),
     Input("btn-search", "n_clicks"), Input("btn-area", "n_clicks"), Input("q", "n_submit"),
     Input("geo-store", "data"), Input("btn-plan", "n_clicks"), Input("dst", "n_submit"), Input("src", "n_submit"),
     Input("map", "relayoutData"),
@@ -930,21 +964,17 @@ def update_timestamp_text(ts, prefix):
 def main_controller(_, __, ___, geo, ____, _____, ______, relayout, q, src, dst, travel, lang, mode, view):
     trig_id = (ctx.triggered[0]['prop_id'] or "").split('.')[0]
     
-    # Default outputs
-    explore_out, route_out, status_out, ts_out, view_out, ui_out, user_loc_out, heatmap_out, q_out, src_out, dst_out = [no_update] * 11
+    explore_out, route_out, status_out, ts_out, view_out, ui_out, heatmap_out, q_out, src_out, dst_out = [no_update] * 10
     
     if mode == "explore":
         lat, lon, zoom, addr = None, None, None, ""
-        
         force_scan = (trig_id == "btn-area")
 
         if trig_id in ("btn-search", "q"):
             if not (res := smart_geocode(q or "", lang=LANG_MAP.get(lang, "zh-TW"))):
                 status_out = {"type": "error", "data": {"key": "toast_err", "mode": "explore"}}
                 ts_out = datetime.now(timezone(timedelta(hours=8))).strftime("%H:%M:%S")
-                ui_out = {"areaBusy": False}
-                q_out = ""
-                return no_update, no_update, status_out, ts_out, no_update, ui_out, no_update, no_update, q_out, no_update, no_update
+                return no_update, no_update, status_out, ts_out, no_update, no_update, no_update, "", no_update, no_update
             
             addr, (lat, lon), _, vp = res
             zoom = SEARCHED_ZOOM
@@ -956,7 +986,7 @@ def main_controller(_, __, ___, geo, ____, _____, ______, relayout, q, src, dst,
             q_out = ""
         
         elif trig_id == "geo-store":
-            if geo and geo.get("error"): return [no_update]*11
+            if geo and geo.get("error"): return [no_update]*10
             lat, lon = geo["lat"], geo["lon"]
             addr = reverse_geocode(lat, lon, lang) or f"({lat:.4f}, {lon:.4f})"
             zoom = 14
@@ -964,10 +994,10 @@ def main_controller(_, __, ___, geo, ____, _____, ______, relayout, q, src, dst,
             explore_out = {"coord": (lat, lon), "addr": addr}
         
         elif trig_id == "btn-area":
-            api_cache.clear() # Clear geocoding cache as well
+            api_cache.clear()
             lat, lon, zoom = view["center"][0], view["center"][1], view["zoom"]
             addr = t(lang, "map_center")
-            explore_out = {} # Clear specific point marker
+            explore_out = {}
         
         else: raise PreventUpdate
         
@@ -979,29 +1009,28 @@ def main_controller(_, __, ___, geo, ____, _____, ______, relayout, q, src, dst,
         status_out = {"type": "explore", "data": {"addr": addr, **forecast}}
         ts_out = datetime.now(timezone(timedelta(seconds=forecast.get("offset_sec", 28800)))).strftime("%H:%M:%S")
         
-        ui_out = {"areaBusy": False} # Reset busy state after completion
-        
-        return explore_out, {}, status_out, ts_out, view_out, ui_out, no_update, heatmap_out, q_out, no_update, no_update
+        ui_out = {"areaBusy": False}
+        return explore_out, {}, status_out, ts_out, view_out, ui_out, heatmap_out, q_out, no_update, no_update
 
     if mode == "route":
         if trig_id == "geo-store":
             if geo and geo.get("error"):
                 status_out = {"type": "error", "data": {"key": "loc_fail", "mode": "route"}}
                 ts_out = datetime.now(timezone(timedelta(hours=8))).strftime("%H:%M:%S")
-                return [no_update]*2 + [status_out, ts_out] + [no_update]*7
+                return no_update, no_update, status_out, ts_out, no_update, no_update, no_update, no_update, no_update, no_update
             raise PreventUpdate
             
         if trig_id in ("btn-plan", "dst", "src"):
             if not src or not dst:
                 status_out = {"type": "error", "data": {"key": "toast_err", "mode": "route"}}
                 ts_out = datetime.now(timezone(timedelta(hours=8))).strftime("%H:%M:%S")
-                return [no_update]*2 + [status_out, ts_out] + [no_update]*7
+                return no_update, no_update, status_out, ts_out, no_update, no_update, no_update, no_update, "", ""
 
             g1, g2 = smart_geocode(src, lang=LANG_MAP.get(lang, "zh-TW")), smart_geocode(dst, lang=LANG_MAP.get(lang, "zh-TW"))
             if not g1 or not g2:
                 status_out = {"type": "error", "data": {"key": "toast_err", "mode": "route"}}
                 ts_out = datetime.now(timezone(timedelta(hours=8))).strftime("%H:%M:%S")
-                return [no_update]*2 + [status_out, ts_out] + [no_update]*7
+                return no_update, no_update, status_out, ts_out, no_update, no_update, no_update, no_update, "", ""
 
             o_addr, o_coord, _, _ = g1
             d_addr, d_coord, _, _ = g2
@@ -1012,7 +1041,7 @@ def main_controller(_, __, ___, geo, ____, _____, ______, relayout, q, src, dst,
 
             if not raw_routes:
                 status_out = {"type": "error", "data": {"key": "no_route", "mode": "route", **d_forecast}}
-                return {}, {}, status_out, ts_out, no_update, no_update, no_update, [], no_update, "", ""
+                return {}, {}, status_out, ts_out, no_update, no_update, [], no_update, "", ""
             
             scored = []
             for r in raw_routes:
@@ -1024,7 +1053,7 @@ def main_controller(_, __, ___, geo, ____, _____, ______, relayout, q, src, dst,
             
             if not scored:
                 status_out = {"type": "error", "data": {"key": "no_route", "mode": "route", **d_forecast}}
-                return {}, {}, status_out, ts_out, no_update, no_update, no_update, [], no_update, "", ""
+                return {}, {}, status_out, ts_out, no_update, no_update, [], no_update, "", ""
 
             scored.sort(key=lambda x: x["risk"])
             best, others = scored[0], scored[1:] if HAS_GMAP else []
@@ -1037,7 +1066,7 @@ def main_controller(_, __, ___, geo, ____, _____, ______, relayout, q, src, dst,
             view_out = {"center": center, "zoom": zoom}
 
             status_out = {"type": "route", "data": {"o_addr": o_addr, "d_addr": d_addr, "risk": round(best["risk"] * 100), "prefix": prefix, **d_forecast}}
-            return {}, route_out, status_out, ts_out, view_out, no_update, no_update, [], no_update, "", ""
+            return {}, route_out, status_out, ts_out, view_out, no_update, [], no_update, "", ""
     
     if trig_id == "map" and relayout:
         center = (view or {}).get("center", BASE_CENTER)
@@ -1046,7 +1075,7 @@ def main_controller(_, __, ___, geo, ____, _____, ______, relayout, q, src, dst,
         if mb_zoom := relayout.get("mapbox.zoom"): zoom = float(mb_zoom)
         center, zoom = clamp_view_to_tw(center, zoom)
         view_out = {"center": center, "zoom": zoom}
-        return [no_update]*4 + [view_out] + [no_update]*6
+        return no_update, no_update, no_update, no_update, view_out, no_update, no_update, no_update, no_update, no_update
     
     raise PreventUpdate
 
@@ -1082,19 +1111,21 @@ def draw_map(style, explore, route, view, mode, heatmap_data, lang):
                 colorscale=HEATMAP_COLORSCALE, zmin=VISUAL_MM_MIN, zmax=HEATMAP_MAX_MM, 
                 showscale=False, opacity=0.65
             ))
+            # ===== MODIFICATION: Add contour plot for edge enhancement =====
             contour_data = _prepare_contour_data(heatmap_data)
             if contour_data:
                 lats_1d, lons_1d, mm_grid = contour_data
-                LEVELS = [2, 10, 25, 50]
+                # Black outline for contrast
                 fig.add_trace(go.Contourmapbox(
                     lat=lats_1d, lon=lons_1d, z=mm_grid,
-                    contours=dict(start=min(LEVELS), end=max(LEVELS), size=8, coloring="none", showlabels=False),
-                    line=dict(color="rgba(0,0,0,0.6)", width=2), showscale=False, hoverinfo="skip"
+                    contours=dict(start=VISUAL_MM_MIN, end=HEATMAP_MAX_MM, size=1, coloring="none", showlabels=False),
+                    line=dict(color="rgba(0,0,0,0.4)", width=2), showscale=False, hoverinfo="skip"
                 ))
+                # White inner line for "stroke" effect
                 fig.add_trace(go.Contourmapbox(
                     lat=lats_1d, lon=lons_1d, z=mm_grid,
-                    contours=dict(start=min(LEVELS), end=max(LEVELS), size=8, coloring="none", showlabels=False),
-                    line=dict(color="rgba(255,255,255,0.8)", width=1), showscale=False, hoverinfo="skip"
+                    contours=dict(start=VISUAL_MM_MIN, end=HEATMAP_MAX_MM, size=1, coloring="none", showlabels=False),
+                    line=dict(color="rgba(255,255,255,0.6)", width=1), showscale=False, hoverinfo="skip"
                 ))
         if explore and (coord := explore.get("coord")):
             fig.add_trace(go.Scattermapbox(lat=[coord[0]], lon=[coord[1]], mode="markers",
@@ -1166,5 +1197,4 @@ app.clientside_callback(
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8050"))
-    # 本地測試使用 127.0.0.1；Render 部署用 0.0.0.0
     app.run(host=os.getenv("HOST", "0.0.0.0"), port=port, debug=False)
