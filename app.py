@@ -535,8 +535,9 @@ def _geocode_nominatim(q: str, lang: str = "zh-TW", tw_only: bool = True):
         return top.get("display_name") or q, (float(top["lat"]), float(top["lon"])), None, None
     return None, (None, None), js.get("status") or "NO_RESULT", None
 
-def smart_geocode(q: str, lang_code: str):
-    lang = LANG_MAP.get(lang_code, "zh-TW")
+def smart_geocode(q: str, ui_lang: str):
+    # 接收 UI 語言（zh|en|ja），這裡做一次轉換即可
+    lang = LANG_MAP.get(ui_lang, "zh-TW")
     if not q: return None
     is_intl = any(k in q for k in INTERNATIONAL_KEYWORDS)
     candidates = _expand_candidates(q) if not is_intl else [q]
@@ -576,8 +577,8 @@ def _reverse_geocode_google(lat: float, lon: float, lang: str = "zh-TW", prefer_
         return results[0].get("formatted_address"), None
     return None, js.get("status") or "NO_RESULT"
 
-def reverse_geocode(lat: float, lon: float, lang_code: str, prefer_area: bool = False):
-    lang = LANG_MAP.get(lang_code, "zh-TW")
+def reverse_geocode(lat: float, lon: float, ui_lang: str, prefer_area: bool = False):
+    lang = LANG_MAP.get(ui_lang, "zh-TW")
     addr, _ = _reverse_geocode_google(lat, lon, lang=lang, prefer_area=prefer_area)
     if addr: return addr
     try:
@@ -700,6 +701,7 @@ server = app.server
 initial_figure = base_map_figure(center=BASE_CENTER, zoom=BASE_ZOOM, style=DEFAULT_TILE_STYLE)
 
 app.layout = html.Div([
+    # ===== STORES (Original) =====
     dcc.Store("lang-store", data="zh"),
     dcc.Store("mode-store", data="explore"),
     dcc.Store("explore-store", data={}),
@@ -712,58 +714,85 @@ app.layout = html.Div([
     dcc.Store(id="status-store", data={"type": None, "data": {}}),
     dcc.Store(id="timestamp-store", data=None),
     dcc.Store(id="rain-heatmap-store", data=None), 
+    
+    # ===== NEW ELEMENTS (from patch) =====
+    # ① 狀態（記住開/關）— 建議放在 layout 很前面
+    dcc.Store(id="panel-store", storage_type="local", data={"panel": "open"}),
 
-    html.Div([
-        html.H2(id="ttl", children="控制台", style={'marginTop': '8px', 'marginBottom': '16px'}), 
-        
-        html.Button("🌐", id="btn-lang", className="btn globe"),
-        html.Div(id="lang-menu", className="menu hide", children=[
-            html.Button("中文", id="lang-zh", n_clicks=0),
-            html.Button("English", id="lang-en", n_clicks=0),
-            html.Button("日本語", id="lang-ja", n_clicks=0),
-        ]),
-        
-        html.Div(className="row", children=[
-            dcc.RadioItems(id="mode", value="explore", className="rad", 
-                           labelStyle={"display": "inline-block", "marginRight": "15px"})
-        ]),
-        
-        html.Div(id="box-explore", children=[
-            html.Div(className="input-row", children=[
-                dcc.Input(id="q", className="input"), 
-                html.Button(id="btn-search", className="button"), 
-            ]),
-            html.Div(className="row gap", children=[
-                html.Button(id="btn-area", className="button link"), 
-                html.Button(id="btn-locate", className="button link"),
-            ]),
-        ]),
+    # ② 手機版左上角的「三」按鈕（固定在畫面，不隨面板隱藏）
+    html.Button("≡", id="panel-toggle",
+                n_clicks=0,
+                className="panel-toggle-mobile",
+                **{"aria-controls": "panel", "aria-expanded": "true", "title": "開啟/關閉控制台"}),
 
-        html.Div(id="box-route", className="hide", children=[
+    # ③（可選）遮罩，避免面板打開時誤觸地圖
+    html.Div(id="panel-scrim", className="panel-scrim", n_clicks=0),
+
+    # ===== CONTROL PANEL (ID added) =====
+    html.Div(
+        id="panel", # <-- ID ADDED HERE
+        className="panel",
+        children=[
+            html.H2(id="ttl", children="控制台", style={'marginTop': '8px', 'marginBottom': '16px'}), 
+            
+            html.Button(
+                "🌐",
+                id="btn-lang",
+                className="globe",
+                **{
+                    "aria-label": "切換語言",
+                    "aria-controls": "lang-menu",
+                    "aria-expanded": "false"
+                }
+            ),
+            html.Div(id="lang-menu", role="menu", className="menu hide", children=[
+                html.Button("中文", id="lang-zh", n_clicks=0, **{"role": "menuitem"}),
+                html.Button("English", id="lang-en", n_clicks=0, **{"role": "menuitem"}),
+                html.Button("日本語", id="lang-ja", n_clicks=0, **{"role": "menuitem"}),
+            ]),
+            
             html.Div(className="row", children=[
-                html.Span(id="lab-travel", className="lab"),
-                dcc.RadioItems(id="travel-mode", value="drive", className="rad", 
-                               labelStyle={"display": "inline-block", "marginRight": "10px"}),
+                dcc.RadioItems(id="mode", value="explore", className="rad", 
+                            labelStyle={"display": "inline-block", "marginRight": "15px"})
             ]),
-            dcc.Input(id="src", className="input"),
-            dcc.Input(id="dst", className="input"),
-            html.Div(className="input-row", children=[
-                html.Button(id="btn-plan", className="button", style={"flex": 1}), 
-                html.Button("📍", id="btn-locate-src", className="button link btn-locate"), 
+            
+            html.Div(id="box-explore", children=[
+                html.Div(className="input-row", children=[
+                    dcc.Input(id="q", className="input"), 
+                    html.Button(id="btn-search", className="button"), 
+                ]),
+                html.Div(className="row gap", children=[
+                    html.Button(id="btn-area", className="button link"), 
+                    html.Button(id="btn-locate", className="button link"),
+                ]),
             ]),
-        ]),
 
-        html.Hr(),
-        html.Div(className="row", children=[
-            html.Span(id="lab-basemap", className="lab"),
-            dcc.RadioItems(id="basemap", value="low", className="rad", 
-                           labelStyle={"display": "inline-block", "marginRight": "15px"})
-        ]),
-        html.Div(id="addr-line", className="addr"),
-        html.Div(id="alert", className="alert yellow hide"),
-        html.Div(id="ts-line", className="ts")
-    ], className="panel"), 
+            html.Div(id="box-route", className="hide", children=[
+                html.Div(className="row", children=[
+                    html.Span(id="lab-travel", className="lab"),
+                    dcc.RadioItems(id="travel-mode", value="drive", className="rad", 
+                                labelStyle={"display": "inline-block", "marginRight": "10px"}),
+                ]),
+                dcc.Input(id="src", className="input"),
+                dcc.Input(id="dst", className="input"),
+                html.Div(className="input-row", children=[
+                    html.Button(id="btn-plan", className="button", style={"flex": 1}), 
+                    html.Button("📍", id="btn-locate-src", className="button link btn-locate"), 
+                ]),
+            ]),
 
+            html.Hr(),
+            html.Div(className="row", children=[
+                html.Span(id="lab-basemap", className="lab"),
+                dcc.RadioItems(id="basemap", value="low", className="rad", 
+                            labelStyle={"display": "inline-block", "marginRight": "15px"})
+            ]),
+            html.Div(id="addr-line", className="addr"),
+            html.Div(id="alert", className="alert yellow hide"),
+            html.Div(id="ts-line", className="ts")
+    ]), 
+
+    # ===== MAP (Original) =====
     html.Div(style={'position': 'fixed', 'top': 0, 'left': 0, 'width': '100%', 'height': '100%', 'zIndex': 0}, children=[
         dcc.Graph(
             id="map",
@@ -773,6 +802,7 @@ app.layout = html.Div([
         ),
     ]),
     
+    # ===== LEGEND (Original) =====
     html.Div(className="legend", id="legend-a", children=[
         html.Span(id="legend-title", className="legend-title"),
         html.Div(className="legend-scale-dynamic", id="legend-scale-container")
@@ -814,20 +844,31 @@ app.clientside_callback(
 )
 
 @app.callback(
-    Output("lang-store","data"),
-    Output("lang-menu","className"),
-    Input("btn-lang","n_clicks"),
-    Input("lang-zh","n_clicks"), Input("lang-en","n_clicks"), Input("lang-ja","n_clicks"),
-    State("lang-store","data"), State("lang-menu","className"), prevent_initial_call=True
+    Output("lang-store", "data"),
+    Output("lang-menu", "className"),
+    Output("btn-lang", "aria-expanded"),
+    Input("btn-lang", "n_clicks"),
+    Input("lang-zh", "n_clicks"),
+    Input("lang-en", "n_clicks"),
+    Input("lang-ja", "n_clicks"),
+    State("lang-store", "data"),
+    State("lang-menu", "className"),
+    prevent_initial_call=True
 )
 def lang_control(b, nz, ne, nj, cur, klass):
     trig = ctx.triggered_id
     if trig == "btn-lang":
-        return cur, ("menu" if "hide" in (klass or "") else "menu hide")
-    if trig == "lang-zh": return "zh", "menu hide"
-    if trig == "lang-en": return "en", "menu hide"
-    if trig == "lang-ja": return "ja", "menu hide"
-    return cur, "menu hide"
+        is_opening = "hide" in (klass or "")
+        new_class = "menu" if is_opening else "menu hide"
+        expanded_state = "true" if is_opening else "false"
+        return cur, new_class, expanded_state
+    if trig == "lang-zh":
+        return "zh", "menu hide", "false"
+    if trig == "lang-en":
+        return "en", "menu hide", "false"
+    if trig == "lang-ja":
+        return "ja", "menu hide", "false"
+    return cur, "menu hide", "false"
 
 @app.callback(
     Output("ttl", "children"),
@@ -981,9 +1022,9 @@ def update_timestamp_text(ts_data, prefix):
     Output("ui-store", "data"),
     Output("user-location-store", "data"),
     Output("rain-heatmap-store", "data", allow_duplicate=True),
-    Output("q", "value"),
+    Output("q", "value", allow_duplicate=True),
     Output("src", "value", allow_duplicate=True),
-    Output("dst", "value"),
+    Output("dst", "value", allow_duplicate=True),
     Input("btn-search", "n_clicks"),
     Input("btn-area", "n_clicks"),
     Input("q", "n_submit"),
@@ -1008,20 +1049,15 @@ def main_controller(n_search, n_area, n_submit, geo_data, n_plan, n_dst_submit, 
         raise PreventUpdate
     trig_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
-    lang_code = LANG_MAP.get(lang, "zh-TW")
     explore_out, route_out, status_out, ts_out, view_out, ui_out, user_loc_out, heatmap_out, q_out, src_out, dst_out = (no_update,) * 11
     fallback_tz = timezone(timedelta(hours=8)) 
     def make_return():
         return (explore_out, route_out, status_out, ts_out, view_out, ui_out, user_loc_out, heatmap_out, q_out, src_out, dst_out)
     
-    if mode == "route" and trig_id in ("btn-plan", "dst", "src", "geo-store"):
-        if trig_id == "geo-store":
-            if geo_data and geo_data.get("error"):
-                status_out = {"type": "error", "data": {"key": "loc_fail", "mode": "route"}}
-                return make_return()
-            
-            src_out = reverse_geocode(geo_data["lat"], geo_data["lon"], lang_code)
-            return make_return()
+    if mode == "route" and trig_id == "geo-store":
+        if geo_data and geo_data.get("error"):
+            status_out = {"type": "error", "data": {"key": "loc_fail", "mode": "route"}}
+        return make_return()
     
     if (mode == "explore" and trig_id in ("btn-search", "q", "btn-area")) or \
        (mode == "explore" and trig_id == "geo-store" and geo_data and not geo_data.get("error")):
@@ -1039,7 +1075,7 @@ def main_controller(n_search, n_area, n_submit, geo_data, n_plan, n_dst_submit, 
                 api_cache.clear()
             
             if trig_id in ("btn-search", "q"):
-                g = smart_geocode(q_val or "", lang_code)
+                g = smart_geocode(q_val or "", lang)
                 if not g:
                     status_out = {"type": "error", "data": {"key": "toast_err", "mode": "explore"}}
                     ui_out = {"areaBusy": False}
@@ -1064,7 +1100,7 @@ def main_controller(n_search, n_area, n_submit, geo_data, n_plan, n_dst_submit, 
             elif trig_id == "geo-store":
                 lat, lon = geo_data["lat"], geo_data["lon"]
                 user_loc_out = (lat, lon)
-                addr = reverse_geocode(lat, lon, lang_code) or f"({lat:.4f}, {lon:.4f})"
+                addr = reverse_geocode(lat, lon, lang) or f"({lat:.4f}, {lon:.4f})"
                 zoom = 14
                 view_out = {"center": [lat, lon], "zoom": zoom}
                 explore_out = {"coord": (lat, lon), "addr": addr}
@@ -1096,83 +1132,82 @@ def main_controller(n_search, n_area, n_submit, geo_data, n_plan, n_dst_submit, 
             ui_out = {"areaBusy": False}
             return make_return()
 
-    if mode == "route" and trig_id in ("btn-plan", "dst", "src", "btn-locate-src", "geo-store"):
-        if trig_id in ("btn-plan", "dst", "src"):
-            if not src_val or not dst_val:
-                status_out = {"type": "error", "data": {"key": "toast_err", "mode": "route"}}
-                ts_out = datetime.now(fallback_tz).strftime("%H:%M:%S")
-                return make_return()
-            
-            heatmap_out = [] 
-            route_out = {} 
-            explore_out = {}
-            
-            g1 = smart_geocode(src_val, lang_code)
-            g2 = smart_geocode(dst_val, lang_code)
-            
-            if not g1 or not g2:
-                status_out = {"type": "error", "data": {"key": "toast_err", "mode": "route"}}
-                ts_out = datetime.now(fallback_tz).strftime("%H:%M:%S")
-                return make_return()
-
-            o_coord, d_coord = (g1[0],g1[1]), (g2[0],g2[1])
-            o_addr, d_addr = g1[2], g2[2] 
-            d_lat, d_lon = d_coord
-            
-            d_forecast = get_point_forecast(d_lat, d_lon, lang)
-            o_forecast = get_point_forecast(o_coord[0], o_coord[1], lang)
-            offset_sec = o_forecast.get("offset_sec", d_forecast.get("offset_sec", 28800)) 
-            
-            if HAS_GMAP:
-                raw_routes = google_routes_with_alts(o_coord, d_coord, travel_mode, lang)
-                alert_prefix = ""
-            else:
-                raw_routes = osrm_route(o_coord, d_coord, travel_mode)
-                alert_prefix = f"[{t(lang,'no_gmap_key')}] "
-
-            ts_timezone = timezone(timedelta(seconds=offset_sec))
-            ts_out = datetime.now(ts_timezone).strftime("%H:%M:%S")
-
-            if not raw_routes:
-                status_out = {"type": "error", "data": {"key": "no_route", "mode": "route", 
-                              "d_lvl_key": d_forecast.get("key"), "d_temp": d_forecast.get("temp")}}
-                return make_return()
-            
-            scored = []
-            for r in raw_routes:
-                poly = r.get("overview_polyline", {}).get("points")
-                if not poly: continue
-                pts = _decode_polyline(poly)
-                if not pts: continue
-                lats = [p[0] for p in pts]; lons = [p[1] for p in pts]
-                flags, idxs = route_rain_flags_concurrent(lats, lons, lang)
-                denom = max(1, len(flags))
-                risk = sum(1.0 for f in flags if f) / denom
-                scored.append({"route": {"lats": lats, "lons": lons}, "risk": risk, "flags": flags, "idxs": idxs})
-            if not scored:
-                status_out = {"type": "error", "data": {"key": "no_route", "mode": "route", 
-                              "d_lvl_key": d_forecast.get("key"), "d_temp": d_forecast.get("temp")}}
-                return make_return()
-
-            scored.sort(key=lambda x: x["risk"])
-            best = scored[0]; others = scored[1:] if HAS_GMAP else []
-            route_out = {
-                "origin": {"addr": o_addr, "coord": o_coord},
-                "dest": {"addr": d_addr, "coord": d_coord},
-                "best": best,
-                "others": [{"route": x["route"], "risk": x["risk"]} for x in others]
-            }
-            risk_percent = round(best["risk"] * 100)
-            status_out = {"type": "route", "data": {
-                "o_addr": o_addr, "d_addr": d_addr, 
-                "d_lvl_key": d_forecast.get("key"), "d_temp": d_forecast.get("temp"), 
-                "risk": risk_percent, "prefix": alert_prefix
-            }}
-            c_lat, c_lon, zoom = bbox_center(best["route"]["lats"], best["route"]["lons"])
-            view_out = {"center": [c_lat, c_lon], "zoom": zoom}
-            src_out = "" 
-            dst_out = "" 
+    if mode == "route" and trig_id in ("btn-plan", "dst", "src"):
+        if not src_val or not dst_val:
+            status_out = {"type": "error", "data": {"key": "toast_err", "mode": "route"}}
+            ts_out = datetime.now(fallback_tz).strftime("%H:%M:%S")
             return make_return()
+        
+        heatmap_out = [] 
+        route_out = {} 
+        explore_out = {}
+        
+        g1 = smart_geocode(src_val, lang)
+        g2 = smart_geocode(dst_val, lang)
+        
+        if not g1 or not g2:
+            status_out = {"type": "error", "data": {"key": "toast_err", "mode": "route"}}
+            ts_out = datetime.now(fallback_tz).strftime("%H:%M:%S")
+            return make_return()
+
+        o_coord, d_coord = (g1[0],g1[1]), (g2[0],g2[1])
+        o_addr, d_addr = g1[2], g2[2] 
+        d_lat, d_lon = d_coord
+        
+        d_forecast = get_point_forecast(d_lat, d_lon, lang)
+        o_forecast = get_point_forecast(o_coord[0], o_coord[1], lang)
+        offset_sec = o_forecast.get("offset_sec", d_forecast.get("offset_sec", 28800)) 
+        
+        if HAS_GMAP:
+            raw_routes = google_routes_with_alts(o_coord, d_coord, travel_mode, lang)
+            alert_prefix = ""
+        else:
+            raw_routes = osrm_route(o_coord, d_coord, travel_mode)
+            alert_prefix = f"[{t(lang,'no_gmap_key')}] "
+
+        ts_timezone = timezone(timedelta(seconds=offset_sec))
+        ts_out = datetime.now(ts_timezone).strftime("%H:%M:%S")
+
+        if not raw_routes:
+            status_out = {"type": "error", "data": {"key": "no_route", "mode": "route", 
+                            "d_lvl_key": d_forecast.get("key"), "d_temp": d_forecast.get("temp")}}
+            return make_return()
+        
+        scored = []
+        for r in raw_routes:
+            poly = r.get("overview_polyline", {}).get("points")
+            if not poly: continue
+            pts = _decode_polyline(poly)
+            if not pts: continue
+            lats = [p[0] for p in pts]; lons = [p[1] for p in pts]
+            flags, idxs = route_rain_flags_concurrent(lats, lons, lang)
+            denom = max(1, len(flags))
+            risk = sum(1.0 for f in flags if f) / denom
+            scored.append({"route": {"lats": lats, "lons": lons}, "risk": risk, "flags": flags, "idxs": idxs})
+        if not scored:
+            status_out = {"type": "error", "data": {"key": "no_route", "mode": "route", 
+                            "d_lvl_key": d_forecast.get("key"), "d_temp": d_forecast.get("temp")}}
+            return make_return()
+
+        scored.sort(key=lambda x: x["risk"])
+        best = scored[0]; others = scored[1:] if HAS_GMAP else []
+        route_out = {
+            "origin": {"addr": o_addr, "coord": o_coord},
+            "dest": {"addr": d_addr, "coord": d_coord},
+            "best": best,
+            "others": [{"route": x["route"], "risk": x["risk"]} for x in others]
+        }
+        risk_percent = round(best["risk"] * 100)
+        status_out = {"type": "route", "data": {
+            "o_addr": o_addr, "d_addr": d_addr, 
+            "d_lvl_key": d_forecast.get("key"), "d_temp": d_forecast.get("temp"), 
+            "risk": risk_percent, "prefix": alert_prefix
+        }}
+        c_lat, c_lon, zoom = bbox_center(best["route"]["lats"], best["route"]["lons"])
+        view_out = {"center": [c_lat, c_lon], "zoom": zoom}
+        src_out = "" 
+        dst_out = "" 
+        return make_return()
 
     if trig_id == "map":
         if not relayout_data: raise PreventUpdate
@@ -1200,8 +1235,7 @@ def main_controller(n_search, n_area, n_submit, geo_data, n_plan, n_dst_submit, 
 def fill_src_from_locate(geo_data, mode, lang):
     if mode == "route" and geo_data and not geo_data.get("error"):
         lat, lon = geo_data["lat"], geo_data["lon"]
-        lang_code = LANG_MAP.get(lang, "zh-TW")
-        addr = reverse_geocode(lat, lon, lang_code)
+        addr = reverse_geocode(lat, lon, lang)
         if addr:
             return addr
     return no_update
@@ -1261,9 +1295,9 @@ def draw_map(style, explore, route, view, mode, heatmap_data, lang):
         legend_style = {"display": "flex"}
         legend_children = [
             html.Div(className="legend-scale-route", children=[
-                html.Div(className="swatch", style={"background-color": COLOR_DRY}),
+                html.Div(className="swatch", style={"backgroundColor": COLOR_DRY}),
                 html.Span(t(lang, "dry")),
-                html.Div(className="swatch", style={"background-color": COLOR_WET}),
+                html.Div(className="swatch", style={"backgroundColor": COLOR_WET}),
                 html.Span(t(lang, "rain")),
             ]),
         ]
@@ -1304,6 +1338,47 @@ def draw_map(style, explore, route, view, mode, heatmap_data, lang):
         
     return fig, legend_style, legend_children
 
+# ===== NEW CLIENTSIDE CALLBACK (from patch, now with positional args) =====
+app.clientside_callback(
+    """
+    function(nBtn, nScrim, ui){
+      ui = ui || {};
+      const trig = (dash_clientside.callback_context.triggered[0]||{}).prop_id || "";
+      let open = (ui.panel === "open");
+
+      if (trig.indexOf("panel-toggle") === 0) open = !open;
+      else if (trig.indexOf("panel-scrim") === 0) open = false;
+
+      const panelCls = open ? "panel" : "panel panel-hide";
+      const scrimCls = open ? "panel-scrim show" : "panel-scrim";
+      const storeOut = (trig && (trig.startsWith("panel-toggle") || trig.startsWith("panel-scrim")))
+                       ? {panel: open ? "open" : "closed"}
+                       : dash_clientside.no_update;
+
+      try{
+        const btn = document.getElementById("panel-toggle");
+        if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+        document.body.classList.toggle("lock-scroll", open && window.matchMedia("(max-width: 768px)").matches);
+      }catch(e){}
+
+      return [panelCls, scrimCls, storeOut];
+    }
+    """,
+    [
+      Output("panel", "className"),
+      Output("panel-scrim", "className"),
+      Output("panel-store", "data"),
+    ],
+    [
+      Input("panel-toggle", "n_clicks"),
+      Input("panel-scrim", "n_clicks"),
+      Input("panel-store", "data"),
+    ],
+)
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8050"))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    # 本地測試使用 127.0.0.1；Render 部署用 0.0.0.0
+    app.run(host=os.getenv("HOST", "0.0.0.0"), port=port, debug=False)
+    

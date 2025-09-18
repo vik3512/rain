@@ -200,8 +200,13 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   border-radius: var(--radius-1);
   cursor: pointer;
 }
-.menu button:hover {
-  background: color-mix(in oklab, var(--border) 80%, var(--fg));
+.menu button:hover { background: var(--border); } /* Fallback */
+@supports (color: color-mix(in oklab, white 50%, black)) {
+  .menu button:hover { background: color-mix(in oklab, var(--border) 80%, var(--fg)); }
+}
+.menu button:focus-visible {
+  outline: 3px solid color-mix(in oklab, var(--accent) 60%, transparent);
+  outline-offset: 2px;
 }
 
 .row {
@@ -233,6 +238,7 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
     position: relative;
     top: -2px;
     transition: all 100ms var(--ease);
+    background: var(--bg); /* 新增：確保深色模式邊界清楚 */
 }
 .rad input[type="radio"]:checked {
     border: 6px solid var(--accent);
@@ -334,7 +340,7 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 10;
+  z-index: 8; /* Lowered from 10 to 8 */
   background: var(--glass);
   backdrop-filter: blur(4px);
   border-radius: var(--radius-2);
@@ -384,4 +390,63 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   font-size: var(--fs-14);
   font-weight: 600;
   color: var(--fg);
+}
+
+/* ========== 手機版：控制台抽屜開關 ==========
+   只影響手機（<=768px）；桌機完全不變
+*/
+@media (max-width: 768px) {
+  /* 面板開啟/關閉一致動畫 */
+  .panel {
+    transition: opacity 160ms var(--ease), transform 160ms var(--ease);
+  }
+
+  /* 左上角「三」按鈕：永遠可見、位階最高 */
+  .panel-toggle-mobile{
+    position: fixed;
+    top: max(12px, env(safe-area-inset-top));
+    left: max(12px, env(safe-area-inset-left));
+    width: 44px; height: 44px; border-radius: 10px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 22px; line-height: 1;
+    border: 1px solid var(--border);
+    background: var(--glass);
+    backdrop-filter: blur(12px);
+    box-shadow: var(--shadow);
+    z-index: 2000; /* 高於 .panel(10) 與 scrim(9) */
+    cursor: pointer;
+  }
+
+  /* 面板隱藏：只改可見性，不影響內部輸入值 */
+  #panel.panel-hide{
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-6px);
+    transition: opacity 160ms var(--ease), transform 160ms var(--ease);
+  }
+
+  /* 遮罩：面板開啟時才接管點擊 */
+  .panel-scrim{
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0);
+    pointer-events: none;
+    transition: background 160ms var(--ease, ease);
+    z-index: 9; /* 介於地圖與面板之間，不擋左上按鈕 */
+  }
+  .panel-scrim.show{
+    background: rgba(0,0,0,0.18);
+    pointer-events: auto;
+  }
+}
+
+/* 可選：開啟面板時鎖背景捲動（由 callback 控制 body.lock-scroll） */
+html.lock-scroll, body.lock-scroll{ overflow: hidden; overscroll-behavior: none; }
+
+
+/* ===== NEW STYLE (for title alignment) ===== */
+@media (max-width: 768px) {
+  /* 讓標題避開左上的 ≡ 按鈕：不改寬幅，只內縮標題 */
+  #panel h2#ttl { 
+    padding-left: 56px; /* 44 按鈕 + 12 間距 */
+  }
 }
