@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# App Version: 7.7-final (穩定熱力圖掃描與視覺強化)
+# App Version: 7.8-final (加入動態雨滴圖層)
 
 import os, json, time, threading, math, logging, re
 from datetime import datetime, timezone, timedelta
@@ -63,7 +63,7 @@ GOOGLE_MAPS_API_KEY = GOOGLE_KEY
 OWM_KEY    = os.getenv("OPENWEATHER_API_KEY", "").strip()
 HAS_GMAP = bool(GOOGLE_KEY)
 HAS_OWM  = bool(OWM_KEY)
-UA = {"User-Agent": "rain-route-assistant/7.7-final"}
+UA = {"User-Agent": "rain-route-assistant/7.8-final"}
 TW_BBOX = (118.2, 20.5, 123.5, 26.5)
 INTERNATIONAL_KEYWORDS = ["澳洲","美國","日本","英國","法國","德國","中國","香港","澳門","韓國","加拿大","紐西蘭","泰國"]
 LANG_MAP = {"zh":"zh-TW","en":"en","ja":"ja"}
@@ -291,7 +291,6 @@ def get_weather_data_for_bounds(bounds: Tuple[Tuple[float, float], Tuple[float, 
     except Exception as e:
         logging.warning(f"Heatmap coarse scan failed: {e}")
 
-    # ===== MODIFICATION: Scan middle 4 cells on force mode =====
     if force and not suspected_cell_indices:
         suspected_cell_indices = [5, 6, 9, 10]
 
@@ -426,11 +425,9 @@ def get_point_forecast(lat: float, lon: float, lang: str) -> dict:
         logging.error(f"Get forecast error: {e}")
         return {"key": "cloudy", "temp": None, "forecast": "", "offset_sec": 0}
 
-# ===== MODIFICATION: Enhanced temperature fetching with multiple fallbacks =====
 temp_cache = CacheToolsTTLCache(maxsize=2048, ttl=300)
 @cached(temp_cache)
 def _get_temp_from_owm_or_om(lat, lon):
-    # 1) 先試 OWM
     if HAS_OWM:
         try:
             r = requests.get(
@@ -444,8 +441,6 @@ def _get_temp_from_owm_or_om(lat, lon):
                 return temp, "owm", None
         except Exception:
             pass
-
-    # 2) 再試 Open-Meteo current_weather（加 timezone=auto）
     try:
         r = requests.get(
             "https://api.open-meteo.com/v1/forecast",
@@ -455,12 +450,10 @@ def _get_temp_from_owm_or_om(lat, lon):
         r.raise_for_status()
         js = r.json()
         cw = js.get("current_weather") or {}
-        if (temp := cw.get("temperature_2m")) is not None: # Note: field can be temperature or temperature_2m
+        if (temp := cw.get("temperature_2m")) is not None:
              return temp, "om_current", None
         if (temp := cw.get("temperature")) is not None:
             return temp, "om_current", None
-
-        # 3) Fallback：改抓 hourly 溫度的當小時值
         r2 = requests.get(
             "https://api.open-meteo.com/v1/forecast",
             params={"latitude": lat, "longitude": lon, "hourly": "temperature_2m", "forecast_days": 1, "timezone": "auto"},
@@ -750,7 +743,6 @@ def _route_zoom_from_km(dist_km: float) -> float:
     if dist_km <= 150: return 9.5
     return 8.5
 
-# ===== NEW: Helper for Contour Plot =====
 def _prepare_contour_data(points_with_rain: List[Tuple[float, float, float]]) -> Optional[Tuple[List, List, List]]:
     if not points_with_rain or len(points_with_rain) < 3:
         return None
@@ -918,30 +910,22 @@ def update_status_text(status, lang):
     status = status or {"type": None}
     stype, data = status.get("type"), status.get("data", {})
     if stype == "explore":
-        # 【修正】移除此處手動添加的 "｜" 符號
         temp_str = f"{round(data['temp'])}°C" if data.get("temp") is not None else ""
         parts = [p for p in [t(lang, data.get("key", "cloudy")), temp_str, data.get("forecast", "")] if p]
-        
-        # 現在 .join 會正確地產生 "多雲 | 29°C"
         return f"📍 {data.get('addr', '')}", " | ".join(parts), "alert yellow"
-        
     if stype == "route":
-        # 【修正】同樣移除目的地溫度前的 "｜" 符號
         d_temp_str = f"{round(data['d_temp'])}°C" if data.get("d_temp") is not None else ""
         dest_now_parts = [t(lang, data.get('d_lvl_key', 'cloudy')), d_temp_str]
         dest_str = f" // {t(lang, 'dest_now')}：{' '.join(p for p in dest_now_parts if p)}"
         return f"📍 {t(lang,'addr_fixed')}：{data['o_addr']} → {data['d_addr']}", f"{data.get('prefix','')}{t(lang,'best')} {data['risk']}%{dest_str}", "alert blue"
-        
     if stype == "error":
         alert_txt = t(lang, data.get("key", "toast_err"))
         if data.get("key") == "no_route":
-            # 【修正】同樣移除目的地溫度前的 "｜" 符號
             d_temp_str = f"{round(data['d_temp'])}°C" if data.get("d_temp") is not None else ""
             dest_now_parts = [t(lang, data.get('d_lvl_key', 'cloudy')), d_temp_str]
             dest_str = f" // {t(lang, 'dest_now')}：{' '.join(p for p in dest_now_parts if p)}"
             alert_txt += dest_str
         return "" if data.get("mode") == "explore" else no_update, alert_txt, "alert blue" if data.get("mode") == "route" else "alert yellow"
-        
     return "", "", "alert yellow hide"
 
 @app.callback(Output("ts-line", "children"), Input("timestamp-store", "data"), Input("i18n-ts-prefix", "data"))
@@ -1111,22 +1095,39 @@ def draw_map(style, explore, route, view, mode, heatmap_data, lang):
                 colorscale=HEATMAP_COLORSCALE, zmin=VISUAL_MM_MIN, zmax=HEATMAP_MAX_MM, 
                 showscale=False, opacity=0.65
             ))
-            # ===== MODIFICATION: Add contour plot for edge enhancement =====
             contour_data = _prepare_contour_data(heatmap_data)
             if contour_data:
                 lats_1d, lons_1d, mm_grid = contour_data
-                # Black outline for contrast
                 fig.add_trace(go.Contourmapbox(
                     lat=lats_1d, lon=lons_1d, z=mm_grid,
                     contours=dict(start=VISUAL_MM_MIN, end=HEATMAP_MAX_MM, size=1, coloring="none", showlabels=False),
                     line=dict(color="rgba(0,0,0,0.4)", width=2), showscale=False, hoverinfo="skip"
                 ))
-                # White inner line for "stroke" effect
                 fig.add_trace(go.Contourmapbox(
                     lat=lats_1d, lon=lons_1d, z=mm_grid,
                     contours=dict(start=VISUAL_MM_MIN, end=HEATMAP_MAX_MM, size=1, coloring="none", showlabels=False),
                     line=dict(color="rgba(255,255,255,0.6)", width=1), showscale=False, hoverinfo="skip"
                 ))
+            
+            # ===== NEW: 動態雨滴圖層 (Dynamic Raindrop Layer) =====
+            HEAVY_RAIN_THRESHOLD = 2.5 # mm/hr
+            heavy_rain_lats = [lat for lat, lon, z in heatmap_data if z >= HEAVY_RAIN_THRESHOLD]
+            heavy_rain_lons = [lon for lat, lon, z in heatmap_data if z >= HEAVY_RAIN_THRESHOLD]
+
+            if heavy_rain_lats:
+                fig.add_trace(go.Scattermapbox(
+                    lat=heavy_rain_lats,
+                    lon=heavy_rain_lons,
+                    mode='markers',
+                    marker=go.scattermapbox.Marker(
+                        size=5,
+                        color='rgba(255, 255, 255, 0.7)',
+                        opacity=0.7
+                    ),
+                    hoverinfo='skip'
+                ))
+            # =======================================================
+
         if explore and (coord := explore.get("coord")):
             fig.add_trace(go.Scattermapbox(lat=[coord[0]], lon=[coord[1]], mode="markers",
                                            marker=dict(size=16, color="rgba(239,68,68,.95)"),
