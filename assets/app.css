@@ -450,3 +450,45 @@ html.lock-scroll, body.lock-scroll{ overflow: hidden; overscroll-behavior: none;
     padding-left: 56px; /* 44 按鈕 + 12 間距 */
   }
 }
+/* ========== 移除右上角「地球」的白底 ========== */
+.globe {
+  background: transparent !important;   /* 背景透明 */
+  border: none !important;             /* 移除邊框 */
+  box-shadow: none !important;         /* 移除陰影 */
+  backdrop-filter: none !important;    /* 移除模糊玻璃效果 */
+  padding: 6px 10px;                   /* 保留點擊範圍 */
+}
+
+.globe:hover,
+.globe:active {
+  background: transparent !important;  /* 滑鼠移上或點擊時保持透明 */
+}
+
+
+/* ========== 移除左上角「三」菜單按鈕白底（手機版） ========== */
+@media (max-width: 768px) {
+  .panel-toggle-mobile {
+    background: transparent !important; /* 背景透明 */
+    border: none !important;            /* 移除邊框 */
+    box-shadow: none !important;        /* 移除陰影 */
+    backdrop-filter: none !important;   /* 移除模糊玻璃效果 */
+  }
+}
+
+/* ========== 可達性：保留鍵盤聚焦框（不會變白底） ========== */
+.globe:focus-visible,
+.panel-toggle-mobile:focus-visible {
+  outline: 3px solid color-mix(in oklab, var(--accent) 60%, transparent);
+  outline-offset: 2px;
+}
+/* --- Desktop defaults (hide the mobile toggle; keep scrim inert) --- */
+.panel-toggle-mobile { display: none; }
+.panel-scrim {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0);
+  pointer-events: none;
+  z-index: 9;
+}
+
+/* --- Mobile overrides (already present; keep as-is) --- */
+/* 這區保留你原本的 @media (max-width: 768px) 設定 */
