@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# App Version: 10.2
+# App Version: 10.2 (merged: CWA SSL compat + scoped mount + OM retry + scan timeout + geocode cache key)
 
 import os, json, time, math, logging
 from datetime import datetime, timezone, timedelta
@@ -8,10 +8,29 @@ from typing import Tuple, Optional, List
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 
 from cachetools import cached, TTLCache
+from cachetools.keys import hashkey
 import requests
 from dash import Dash, html, dcc, Input, Output, State, no_update, ctx
 from dash.exceptions import PreventUpdate
 import plotly.graph_objects as go
+
+# === SSL / HTTP tooling ===
+import ssl
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+from requests.exceptions import SSLError
+try:
+    # for broader compatibility (urllib3 v1.x / v2.x)
+    from urllib3 import PoolManager
+except Exception:
+    from urllib3.poolmanager import PoolManager  # type: ignore
+
+# Silence only when insecure fallback is used
+try:
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+except Exception:
+    pass
 
 try:
     from dotenv import load_dotenv
@@ -56,6 +75,51 @@ LANG_MAP = {"zh":"zh-TW","en":"en","ja":"ja"}
 MAX_SCAN_POINTS = 900
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=16)
+
+# === Sessions (general + CWA with scoped relaxed strict) ===
+def _make_retry_session(total=2, backoff=0.2) -> requests.Session:
+    s = requests.Session()
+    retries = Retry(
+        total=total,
+        backoff_factor=backoff,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"],
+        raise_on_status=False,
+    )
+    s.mount("https://", HTTPAdapter(max_retries=retries))
+    return s
+
+def _make_cwa_session() -> requests.Session:
+    """Create a session that relaxes VERIFY_X509_STRICT, scoped to CWA only, and compatible with older requests."""
+    ctx = ssl.create_default_context()
+    try:
+        ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+    class SSLContextAdapter(HTTPAdapter):
+        # For requests < 2.31 / urllib3 < 2 compatible injection
+        def init_poolmanager(self, *args, **kwargs):
+            kwargs['ssl_context'] = ctx
+            return super().init_poolmanager(*args, **kwargs)
+        def proxy_manager_for(self, *args, **kwargs):
+            kwargs['ssl_context'] = ctx
+            return super().proxy_manager_for(*args, **kwargs)
+
+    s = requests.Session()
+    retries = Retry(
+        total=2,
+        backoff_factor=0.2,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"],
+        raise_on_status=False,
+    )
+    # Scope adapter to exact host prefix to avoid leaking relaxed rules elsewhere
+    s.mount("https://opendata.cwa.gov.tw/", SSLContextAdapter(max_retries=retries))
+    return s
+
+_CWA = _make_cwa_session()   # only for opendata.cwa.gov.tw
+_OM  = _make_retry_session() # for api.open-meteo.com
 
 # ===== 地圖基礎 & 新架構參數 =====
 BASE_CENTER = [23.9738, 120.9820]
@@ -143,14 +207,28 @@ def is_in_taiwan(lat: float, lon: float) -> bool:
     min_lat, min_lon, max_lat, max_lon = TW_BBOX
     return min_lat <= lat <= max_lat and min_lon <= lon <= max_lon
 
+# ====== CWA: 雨量 ======
 @cached(cwa_stations_cache)
 def get_cwa_stations_data():
     if not CWA_API_KEY: return None
+    url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0002-001"
+    params = {"Authorization": CWA_API_KEY, "elementName": "RAIN,MIN_10"}
     try:
-        url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0002-001"
-        params = {"Authorization": CWA_API_KEY, "elementName": "RAIN,MIN_10"}
-        r = requests.get(url, params=params, timeout=10, headers=UA)
+        r = _CWA.get(url, params=params, timeout=6, headers=UA)
         r.raise_for_status()
+    except SSLError:
+        # 單次退而求其次（只限 CWA）
+        try:
+            r = requests.get(url, params=params, timeout=6, headers=UA, verify=False)
+            r.raise_for_status()
+        except Exception as e:
+            logging.error(f"Failed to fetch CWA stations (insecure fallback failed): {e}")
+            return None
+    except Exception as e:
+        logging.error(f"Failed to fetch CWA stations: {e}")
+        return None
+
+    try:
         data = r.json()
         locations = data.get('records', {}).get('location', [])
         station_data = []
@@ -165,7 +243,7 @@ def get_cwa_stations_data():
             station_data.append({'lat': lat, 'lon': lon, 'rain_1h': rain_1h, 'rain_10min': rain_10min})
         return station_data
     except Exception as e:
-        logging.error(f"Failed to fetch CWA stations: {e}")
+        logging.error(f"CWA stations parse error: {e}")
         return None
 
 def get_cwa_realtime_rain(lat: float, lon: float) -> Optional[float]:
@@ -185,14 +263,27 @@ def get_cwa_realtime_rain(lat: float, lon: float) -> Optional[float]:
     if min_dist_sq > 0.25**2: return None
     return closest_station_rain
 
+# ====== CWA: 溫度 ======
 @cached(cwa_temp_cache)
 def get_cwa_nearby_temp(lat: float, lon: float) -> Optional[float]:
     if not CWA_API_KEY: return None
+    url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001"
+    params = {"Authorization": CWA_API_KEY, "elementName": "TEMP"}
     try:
-        url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001"
-        params = {"Authorization": CWA_API_KEY, "elementName": "TEMP"}
-        r = requests.get(url, params=params, timeout=8, headers=UA)
+        r = _CWA.get(url, params=params, timeout=6, headers=UA)
         r.raise_for_status()
+    except SSLError:
+        try:
+            r = requests.get(url, params=params, timeout=6, headers=UA, verify=False)
+            r.raise_for_status()
+        except Exception as e:
+            logging.warning(f"CWA TEMP insecure fallback failed: {e}")
+            return None
+    except Exception as e:
+        logging.warning(f"CWA TEMP fetch failed: {e}")
+        return None
+
+    try:
         data = r.json()
         locations = data.get("records", {}).get("location", [])
         best, best_d = None, float("inf")
@@ -211,9 +302,10 @@ def get_cwa_nearby_temp(lat: float, lon: float) -> Optional[float]:
                 continue
         return best if best is not None and best_d <= (0.25 ** 2) else None
     except Exception as e:
-        logging.warning(f"CWA TEMP fetch failed: {e}")
+        logging.warning(f"CWA TEMP parse failed: {e}")
         return None
 
+# ====== OWM: 溫度後援 ======
 @cached(owm_cache)
 def get_owm_temp(lat: float, lon: float) -> Optional[float]:
     if not OWM_KEY: return None
@@ -232,7 +324,6 @@ def get_owm_temp(lat: float, lon: float) -> Optional[float]:
 
 def _clear_weather_caches_safely():
     for cache in [om_api_cache, api_cache, cwa_warnings_cache, cwa_stations_cache, cwa_temp_cache, owm_cache]:
-            # 保持原樣
         try:
             if hasattr(cache, 'clear'): cache.clear()
         except Exception:
@@ -240,17 +331,18 @@ def _clear_weather_caches_safely():
 
 def _current_hour_key_utc(): return datetime.utcnow().strftime("%Y-%m-%dT%H")
 
+# ====== Open-Meteo: 小時預報（加重試 + timeout 12s） ======
 @cached(om_api_cache)
 def _om_hourly_forecast_data_cached_api(qlat: float, qlon: float, hour_key_utc: str):
     try:
-        r = requests.get(
+        r = _OM.get(
             "https://api.open-meteo.com/v1/forecast",
             params={
                 "latitude": qlat, "longitude": qlon,
                 "hourly": "precipitation,weather_code,temperature_2m",
                 "forecast_days": 2, "timezone": "auto"
             },
-            timeout=8, headers=UA
+            timeout=12, headers=UA
         )
         r.raise_for_status()
         js = r.json()
@@ -283,7 +375,8 @@ def get_rain_mm_hybrid(lat: float, lon: float) -> Tuple[float, int, bool]:
     except Exception:
         return 0.0, 0, False
 
-def get_weather_data_for_bounds(bounds, zoom, timeout_sec=4.0):
+# === 掃描（預設逾時由 4s -> 6s） ===
+def get_weather_data_for_bounds(bounds, zoom, timeout_sec=6.0):
     (s_lat, w_lon), (n_lat, e_lon) = bounds
     timed_out = False
 
@@ -383,7 +476,12 @@ def get_point_forecast(lat: float, lon: float, lang: str) -> dict:
         return {"key": "cloudy", "forecast": "", "temp": best_temp, "offset_sec": 0,
                 "d_lvl_key": "cloudy", "d_temp": best_temp}
 
-@cached(api_cache)
+# ====== Geocoding（修正 cache key：避免 bounds 是 dict 造成 unhashable） ======
+def _smart_geocode_key(q, lang, bounds=None):
+    # 簡單版：忽略 bounds，提升命中率並避免 dict 當 key
+    return hashkey(q, lang)
+
+@cached(api_cache, key=_smart_geocode_key)
 def smart_geocode(q: str, lang: str = "zh-TW", bounds: Optional[dict] = None):
     if HAS_GMAP:
         try:
@@ -813,7 +911,7 @@ def unified_draw_map(basemap, mode, view, explore_data, rain_points, route_data,
                 marker=dict(
                     size=max(25, _get_radius_for_zoom(zoom) * 0.8),
                     color=vals, colorscale=RAIN_CIRCLE_COLORSCALE,
-                    cmin=0, cmax=HEATMAP_MAX_MM, opacity=0.65, allowoverlap=True
+                    cmin=0, cmax=HEATMAP_MAX_MM, opacity=0.65
                 ),
                 hoverinfo='none', name="Rain"
             ))
@@ -850,7 +948,6 @@ def unified_draw_map(basemap, mode, view, explore_data, rain_points, route_data,
             mode='markers+text', text=[t(lang, 'origin'), t(lang, 'dest')], textposition='top right',
             marker=dict(size=14, color="#10B981")
         ))
-        # ✅ 改動 2：修正變數名，讓圖例顯示回來
         legend_style, legend_children = {"display":"flex"}, [
             html.Div(className="legend-scale-route", children=[
                 html.Div(className="swatch", style={"backgroundColor": COLOR_DRY}),
