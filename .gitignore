@@ -1,13 +1,16 @@
+# Virtual env
 .venv/
-__pycache__/
-.env
-*.pyc
-.DS_Store
+venv/
 
+# Python caches
+__pycache__/
+*.pyc
+
+# Environment files (keep secrets out of git)
 .env
 *.env
 .env.*.local
-.DS_Store
-.DS_Store
 .env.rtf
+
+# macOS
 .DS_Store
