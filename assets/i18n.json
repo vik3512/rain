@@ -47,7 +47,8 @@
         "search_area": "搜尋此區域",
         "searching": "搜尋中...",
         "no_gmap_key": "無 Google 路線 API 金鑰",
-        "dry": "無雨"
+        "dry": "無雨",
+        "partial_result": " (部分結果)"
     },
     "en": {
         "title": "Live Rain + Route",
@@ -97,7 +98,8 @@
         "search_area": "Search this area",
         "searching": "Searching...",
         "no_gmap_key": "No Google API key",
-        "dry": "Dry"
+        "dry": "Dry",
+        "partial_result": " (Partial results)"
     },
     "ja": {
         "title": "リアルタイム雨量＋経路案内",
@@ -147,6 +149,7 @@
         "search_area": "このエリアを検索",
         "searching": "検索中...",
         "no_gmap_key": "Google APIキーなし",
-        "dry": "降雨なし"
+        "dry": "降雨なし",
+        "partial_result": " (一部の結果)"
     }
 }

@@ -65,9 +65,9 @@ html, body {
   line-height: var(--lh);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  height: 100%; 
-  margin: 0;   
-  overflow: hidden; 
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
 }
 
 #map {
@@ -96,19 +96,53 @@ a:hover { color: var(--accent-press); }
   background: var(--accent); color: white; border: 0;
   font-size: var(--fs-16); font-weight: 600;
   box-shadow: none;
-  cursor: pointer; 
+  cursor: pointer;
   transition: transform var(--fast) var(--ease), background var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
 }
 .button:hover { background: var(--accent-press); }
 .button:active { transform: translateY(1px); }
 
+/* 為搜尋和定位按鈕新增圖示 */
+#btn-search, #btn-locate, #btn-area {
+  gap: 8px;
+}
+#btn-search::before, #btn-locate::before {
+  content: '';
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  background-color: currentColor; /* 讓 SVG 顏色跟隨文字顏色 */
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+/* 搜尋圖示 (放大鏡) */
+#btn-search::before {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'%3E%3C/circle%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'%3E%3C/line%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'%3E%3C/circle%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'%3E%3C/line%3E%3C/svg%3E");
+}
+/* 定位圖示 (十字準星) */
+#btn-locate::before {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'%3E%3C/circle%3E%3Ccircle cx='12' cy='12' r='4'%3E%3C/circle%3E%3Cline x1='22' y1='12' x2='18' y2='12'%3E%3C/line%3E%3Cline x1='6' y1='12' x2='2' y2='12'%3E%3C/line%3E%3Cline x1='12' y1='6' x2='12' y2='2'%3E%3C/line%3E%3Cline x1='12' y1='22' x2='12' y2='18'%3E%3C/line%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'%3E%3C/circle%3E%3Ccircle cx='12' cy='12' r='4'%3E%3C/circle%3E%3Cline x1='22' y1='12' x2='18' y2='12'%3E%3C/line%3E%3Cline x1='6' y1='12' x2='2' y2='12'%3E%3C/line%3E%3Cline x1='12' y1='6' x2='12' y2='2'%3E%3C/line%3E%3Cline x1='12' y1='22' x2='12' y2='18'%3E%3C/line%3E%3C/svg%3E");
+}
+#btn-search.button {
+    color: white;
+}
+#btn-locate.button.link {
+    color: var(--accent);
+}
+#btn-locate.button.link:hover {
+    color: var(--accent-press);
+}
+
 .button.link {
   background: transparent; color: var(--accent); padding: 0; height: auto;
-  font-weight: 500; 
+  font-weight: 500;
 }
 .button.link:hover { color: var(--accent-press); text-decoration: underline; background: transparent; }
 
-/* 表單輸入 */
 .input, input[type="text"], input[type="search"], input[type="email"], input[type="number"], textarea, select {
   width: 100%; height: 44px;
   padding: 0 14px;
@@ -126,7 +160,6 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 25%, transparent);
 }
 
-/* 卡片 */
 .card {
   background: var(--card);
   border: 1px solid var(--border);
@@ -135,7 +168,6 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   padding: var(--space-5);
 }
 
-/* 可達性：聚焦可見 */
 :focus-visible { outline: 3px solid color-mix(in oklab, var(--accent) 60%, transparent); outline-offset: 3px; border-radius: 6px; }
 
 
@@ -145,7 +177,6 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   position: fixed;
   left: 16px;
   top: 16px;
-  z-index: 10;
   width: 440px;
   max-width: calc(100vw - 32px);
   background: var(--glass);
@@ -155,6 +186,8 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   border: 1px solid var(--border);
   padding: var(--space-4) var(--space-5);
   box-sizing: border-box;
+  /* FIX: 確保面板永遠在最上層 */
+  z-index: 100;
 }
 
 .panel h2 {
@@ -164,12 +197,11 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
 
 .globe {
   position: absolute;
-  top: 22px; 
+  top: 22px;
   right: 24px;
   border-radius: var(--radius-1);
   padding: 6px 10px;
   cursor: pointer;
-  /* 移除背景 */
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -188,7 +220,7 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   display: flex;
   flex-direction: column;
   gap: 6px;
-  z-index: 20;
+  z-index: 110; /* 比 panel 更高 */
   border: 1px solid var(--border);
 }
 .menu.hide {
@@ -198,12 +230,13 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   width: 100%;
   padding: 8px;
   border: none;
-  background: var(--border);
+  background: transparent;
   color: var(--fg);
   border-radius: var(--radius-1);
   cursor: pointer;
+  text-align: left;
 }
-.menu button:hover { background: var(--border); } /* Fallback */
+.menu button:hover { background: var(--border); }
 @supports (color: color-mix(in oklab, white 50%, black)) {
   .menu button:hover { background: color-mix(in oklab, var(--border) 80%, var(--fg)); }
 }
@@ -222,11 +255,22 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   gap: 12px;
 }
 
+/* FIX: 永久修正 RadioItems 排列問題 */
+/* 使用 Flexbox 強制所有 .rad 元件的選項水平排列 */
+.rad {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 .rad label {
   margin-right: 15px;
   display: inline-block;
   font-size: var(--fs-16);
   color: var(--fg);
+}
+#box-route .rad label {
+  margin-right: 8px;
 }
 
 .rad input[type="radio"] {
@@ -251,19 +295,17 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
     box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 30%, transparent);
 }
 
-
 .input-row {
   display: flex;
   gap: var(--space-2);
 }
 .input-row .input {
   flex: 1;
-  margin-bottom: 0; 
+  margin-bottom: 0;
 }
 .input-row .button {
   flex-shrink: 0;
 }
-
 
 #box-explore .row.gap {
   display: grid;
@@ -271,7 +313,15 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
 }
 #box-explore .row.gap .button {
   width: 100%;
-  height: 40px; 
+}
+
+/* FIX: 確保探索模式下的連結按鈕高度一致 */
+#box-explore .row.gap .button.link {
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
 }
 
 .btn-locate {
@@ -327,7 +377,6 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   }
 }
 
-
 .ts {
   margin-top: 12px;
   color: var(--muted);
@@ -360,7 +409,6 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   color: var(--fg);
 }
 
-/* 熱力圖模式圖例 */
 .legend-scale {
   display: flex;
   justify-content: space-between;
@@ -376,9 +424,9 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   width: 120px;
   height: 10px;
   border-radius: 5px;
+  background-image: linear-gradient(to right, #9BE7FF, #39B6FF 25%, #1C62F2 50%, #6D28D9 75%, #A21CAF);
 }
 
-/* 路線模式圖例 */
 .legend-scale-route {
   display: flex;
   align-items: center;
@@ -388,6 +436,8 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
     width: 24px;
     height: 8px;
     border-radius: var(--radius-round);
+    display: inline-block;
+    margin-right: 8px;
 }
 .legend-scale-route span {
   font-size: var(--fs-14);
@@ -395,26 +445,33 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
   color: var(--fg);
 }
 
-/* ========================================================== */
-/* ========== 正確的手機版與桌機版樣式切換邏輯 ========== */
-/* ========================================================== */
-
-/* 1. 先定義預設/桌機版樣式：預設隱藏手機按鈕 */
-.panel-toggle-mobile {
-  display: none;
+._dash-loading-callback {
+  position: fixed !important;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(255, 255, 255, 0.5);
+  z-index: 1000;
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+@media (prefers-color-scheme: dark) {
+  ._dash-loading-callback {
+    background-color: rgba(20, 20, 22, 0.5);
+  }
 }
 
-/* 2. 再定義手機版樣式：當螢幕寬度小於等於 768px 時，覆蓋預設樣式 */
+/* ============ Mobile Layout ============ */
+.panel-toggle-mobile, .panel-scrim {
+  display: none;
+}
 @media (max-width: 768px) {
-
-  /* 讓面板有滑入滑出的動畫效果 */
   .panel {
     transition: opacity 160ms var(--ease), transform 160ms var(--ease);
   }
-
-  /* 顯示「三」按鈕，並設定其樣式與位置 */
   .panel-toggle-mobile {
-    display: inline-flex; /* 覆蓋 display: none，讓按鈕顯示出來 */
+    display: inline-flex;
     position: fixed;
     top: max(12px, env(safe-area-inset-top));
     left: max(12px, env(safe-area-inset-left));
@@ -424,54 +481,41 @@ textarea { height: auto; padding: 12px 14px; min-height: 120px; resize: vertical
     justify-content: center;
     font-size: 22px;
     line-height: 1;
-    z-index: 2000; /* 確保在最上層 */
+    z-index: 2000;
     cursor: pointer;
-    /* 以下為移除背景的樣式 */
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
     backdrop-filter: none !important;
   }
-
-  /* 面板隱藏時的樣式 */
   #panel.panel-hide {
     opacity: 0;
     pointer-events: none;
     transform: translateY(-6px);
   }
-
-  /* 遮罩的基礎樣式 */
   .panel-scrim {
+    display: block;
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0);
     pointer-events: none;
     transition: background 160ms var(--ease, ease);
-    z-index: 9; /* 層級低於按鈕，高於地圖 */
+    z-index: 99;
   }
-  
-  /* 遮罩顯示時的樣式 */
   .panel-scrim.show {
     background: rgba(0, 0, 0, 0.18);
-    pointer-events: auto; /* 允許點擊 */
+    pointer-events: auto;
   }
-
-  /* 讓標題文字避開左上角的按鈕 */
   #panel h2#ttl {
     padding-left: 56px;
   }
 }
 
-/* 鍵盤使用者的高亮外框（可達性） */
-.globe:focus-visible,
-.panel-toggle-mobile:focus-visible {
+.globe:focus-visible, .panel-toggle-mobile:focus-visible {
   outline: 3px solid color-mix(in oklab, var(--accent) 60%, transparent);
   outline-offset: 2px;
   border-radius: 6px;
 }
-
-/* 開啟面板時鎖定背景滾動（由 callback 控制） */
-html.lock-scroll,
 body.lock-scroll {
   overflow: hidden;
   overscroll-behavior: none;
